@@ -1,0 +1,7 @@
+{
+  "id": "commit-review",
+  "requirements": {
+    "paseo": ">=0.11.1"
+  },
+  "build": [["npm", "ci", "--omit=dev"]]
+}
