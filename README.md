@@ -28,16 +28,17 @@ paseo plugin add git:markahesketh/paseo-plugin-commit-review
 
 ## Use
 
-Open the panel from an agent. You can use either of these:
+Open the panel in one of these ways:
 
-- ⌘K → **Review a commit**
-- the `/review-commit` slash command
+- In the Explorer, click **+** and then **Commit review**.
+- From an agent, use ⌘K → **Review a commit**.
+- From an agent, use the `/review-commit` slash command.
 
-The panel opens in the Explorer, next to Files and Changes. It sends the review to the agent you opened it from.
+The panel opens in the Explorer, next to Files and Changes. You choose the agent that gets the review next to the **Send** button. If you open the panel from an agent, that agent is selected. If not, the most recently updated agent in the workspace is selected.
 
 ## Behaviour to know
 
-- Each agent has its own draft comments. Drafts stay in memory in the plugin process. You lose them if the plugin reloads or the daemon restarts. They are also deleted when the agent closes.
+- Draft comments belong to the workspace. They stay in memory in the plugin process. You lose them if the plugin reloads or the daemon restarts. They are also deleted when the workspace is archived.
 - Paseo has no "commit" review mode. So each commit is sent as a `base` review of the range `<sha>^..<sha>`. If you comment on more than one commit, the plugin sends one review for each commit.
 - If you amend or rebase a commit after you comment on it, its comments are not sent. The footer counts them, and **Discard** deletes them.
 - The diff does not show binary files or files with more than 5,000 changed lines.

@@ -14,26 +14,26 @@ const draft = {
 };
 
 describe("comment store", () => {
-  it("keeps each agent's comments apart and removes only the given IDs", () => {
+  it("keeps each workspace's comments apart and removes only the given IDs", () => {
     const store = createCommentStore();
-    const sent = store.add({ ...draft, agentId: "a" }).comment;
-    const addedWhileSending = store.add({ ...draft, agentId: "a" }).comment;
-    store.add({ ...draft, agentId: "b" });
+    const sent = store.add({ ...draft, workspaceId: "a" }).comment;
+    const addedWhileSending = store.add({ ...draft, workspaceId: "a" }).comment;
+    store.add({ ...draft, workspaceId: "b" });
 
     store.remove({ ids: [sent.id] });
 
-    expect(store.list({ agentId: "a" }).comments).toEqual([addedWhileSending]);
-    expect(store.list({ agentId: "b" }).comments).toHaveLength(1);
+    expect(store.list({ workspaceId: "a" }).comments).toEqual([addedWhileSending]);
+    expect(store.list({ workspaceId: "b" }).comments).toHaveLength(1);
   });
 
-  it("drops a closed agent's comments", () => {
+  it("drops an archived workspace's comments", () => {
     const store = createCommentStore();
-    store.add({ ...draft, agentId: "a" });
-    store.add({ ...draft, agentId: "b" });
+    store.add({ ...draft, workspaceId: "a" });
+    store.add({ ...draft, workspaceId: "b" });
 
-    store.removeAgent("a");
+    store.removeWorkspace("a");
 
-    expect(store.list({ agentId: "a" }).comments).toEqual([]);
-    expect(store.list({ agentId: "b" }).comments).toHaveLength(1);
+    expect(store.list({ workspaceId: "a" }).comments).toEqual([]);
+    expect(store.list({ workspaceId: "b" }).comments).toHaveLength(1);
   });
 });

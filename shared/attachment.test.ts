@@ -5,7 +5,7 @@ import type { ReviewComment } from "./review";
 function comment(sha: string, body: string): ReviewComment {
   return {
     id: body,
-    agentId: "agent",
+    workspaceId: "workspace",
     sha: `${sha}def`,
     shortSha: sha,
     filePath: "src/total.ts",

@@ -24,6 +24,8 @@ export default function contribute(server: PluginServerContext) {
   server.handle(addCommentRpc, comments.add);
   server.handle(updateCommentRpc, comments.update);
   server.handle(removeCommentsRpc, comments.remove);
-  const stopAgentClosed = server.on("agent.closed", ({ agent }) => comments.removeAgent(agent.id));
-  return () => stopAgentClosed();
+  const stopArchived = server.on("workspace.archived", ({ workspace }) =>
+    comments.removeWorkspace(workspace.id),
+  );
+  return () => stopArchived();
 }

@@ -49,7 +49,7 @@ export const ReviewContextLineSchema = DiffLineSchema.omit({ tokens: true });
 
 export const ReviewCommentSchema = z.object({
   id: z.string(),
-  agentId: z.string(),
+  workspaceId: z.string(),
   sha: ShaSchema,
   shortSha: ShaSchema,
   filePath: z.string(),
@@ -85,10 +85,10 @@ export const commitDiffRpc = defineRpc({
   output: z.object({ files: z.array(DiffFileSchema) }),
 });
 
-// Draft comments belong to the agent that will receive them.
+// Draft comments belong to the workspace; the user picks the agent when sending.
 export const listCommentsRpc = defineRpc({
   name: "comments.list",
-  input: z.object({ agentId: z.string() }),
+  input: z.object({ workspaceId: z.string() }),
   output: z.object({ comments: z.array(ReviewCommentSchema) }),
 });
 

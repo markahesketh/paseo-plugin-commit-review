@@ -14,8 +14,10 @@ export function createCommentStore() {
   const comments = new Map<string, ReviewComment>();
 
   return {
-    list({ agentId }: RpcInput<typeof listCommentsRpc>): RpcOutput<typeof listCommentsRpc> {
-      return { comments: [...comments.values()].filter((comment) => comment.agentId === agentId) };
+    list({ workspaceId }: RpcInput<typeof listCommentsRpc>): RpcOutput<typeof listCommentsRpc> {
+      return {
+        comments: [...comments.values()].filter((comment) => comment.workspaceId === workspaceId),
+      };
     },
 
     add(input: RpcInput<typeof addCommentRpc>): RpcOutput<typeof addCommentRpc> {
@@ -38,9 +40,9 @@ export function createCommentStore() {
       return { removed: ids.filter((id) => comments.delete(id)).length };
     },
 
-    removeAgent(agentId: string): void {
+    removeWorkspace(workspaceId: string): void {
       for (const [id, comment] of comments) {
-        if (comment.agentId === agentId) comments.delete(id);
+        if (comment.workspaceId === workspaceId) comments.delete(id);
       }
     },
   };

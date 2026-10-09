@@ -1,6 +1,6 @@
-import type { PluginAgentPanelProps } from "@getpaseo/plugin/client";
+import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { isHovered } from "./hover";
-import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
+import { usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import { FlatList, Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +14,8 @@ import {
   removeCommentsRpc,
   updateCommentRpc,
 } from "../shared/review";
+import { AgentPicker } from "./agent-picker";
+import { agentLabel, useWorkspaceAgents } from "./agents";
 import { CommitPicker, CommitSummaryLine } from "./commit-picker";
 import {
   CommentCard,
@@ -27,6 +29,7 @@ import {
 } from "./diff-rows";
 import { createDiffPalette } from "./palette";
 import { buildRows, reviewContext, targetKey, type DiffRow, type LineTarget } from "./rows";
+import { preferAgent, usePreferredAgent } from "./target-agent";
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
@@ -34,13 +37,17 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: PluginAgentPanelProps) {
+export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspacePanelProps) {
   const palette = useMemo(() => createDiffPalette(theme), [theme]);
   const paseo = usePaseo();
   const toast = useToast();
   const queryClient = useQueryClient();
   const cwd = useWorkspace(workspaceId, (workspace) => workspace.directory);
-  const agentTitle = useAgent(agentId, ({ title }) => title);
+  const agents = useWorkspaceAgents(workspaceId);
+  const preferredAgentId = usePreferredAgent(workspaceId);
+  const agentList = agents.data ?? [];
+  const targetAgent =
+    agentList.find((agent) => agent.id === preferredAgentId) ?? agentList[0] ?? null;
 
   const listCommits = useRpc(listCommitsRpc);
   const commitDiff = useRpc(commitDiffRpc);
@@ -51,6 +58,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
 
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(EMPTY_SET);
   const [editing, setEditing] = useState<LineTarget | null>(null);
   const [message, setMessage] = useState("");
@@ -83,14 +91,14 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
     staleTime: Infinity,
   });
   const comments = useQuery({
-    queryKey: ["comments", agentId],
-    queryFn: () => listComments({ agentId }),
+    queryKey: ["comments", workspaceId],
+    queryFn: () => listComments({ workspaceId }),
   });
   const allComments = comments.data?.comments ?? [];
 
   const invalidateComments = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ["comments", agentId] }),
-    [queryClient, agentId],
+    () => queryClient.invalidateQueries({ queryKey: ["comments", workspaceId] }),
+    [queryClient, workspaceId],
   );
   const onError = useCallback((error: unknown) => toast.error(errorText(error)), [toast]);
   const { mutate: add } = useMutation({ mutationFn: addComment, onSuccess: invalidateComments, onError });
@@ -106,7 +114,8 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
     mutationFn: async () => {
       // Steer like the composer does: the daemon adds the review to a running
       // turn when the provider can, and otherwise starts a new turn.
-      await paseo.agents.ref(agentId).send(message.trim(), {
+      if (!targetAgent) throw new Error("No agent in this workspace");
+      await paseo.agents.ref(targetAgent.id).send(message.trim(), {
         attachments: buildReviewAttachments({ cwd: cwd!, comments: sendable }),
         activeTurnBehavior: "steer",
       });
@@ -202,7 +211,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
               onSubmit={(body) => {
                 if (!commit) return;
                 add({
-                  agentId,
+                  workspaceId,
                   sha: commit.sha,
                   shortSha: commit.shortSha,
                   ...item.target,
@@ -215,7 +224,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
           );
       }
     },
-    [palette, gutter, toggleFile, toggleEditing, update, remove, add, commit, agentId],
+    [palette, gutter, toggleFile, toggleEditing, update, remove, add, commit, workspaceId],
   );
 
   const padding = layout.compact ? 12 : 16;
@@ -343,10 +352,34 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
                 remove({ ids: allComments.map((comment) => comment.id) });
               }}
             />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Select the agent to send the review to"
+              onPress={() => {
+                void agents.refetch();
+                setAgentPickerOpen(true);
+              }}
+              style={(state) => ({
+                flexShrink: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                borderRadius: 6,
+                backgroundColor: isHovered(state) ? palette.raised : palette.surface,
+              })}
+            >
+              <Icon name="Bot" size={14} color={palette.foregroundMuted} />
+              <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.foreground, fontSize: 13 }}>
+                {targetAgent ? agentLabel(targetAgent) : "No agent"}
+              </Text>
+              <Icon name="ChevronDown" size={14} color={palette.foregroundMuted} />
+            </Pressable>
             <SmallButton
-              label={send.isPending ? "Sending…" : `Send to ${agentTitle ?? "agent"}`}
+              label={send.isPending ? "Sending…" : "Send"}
               variant="primary"
-              disabled={send.isPending || sendable.length === 0 || cwd === null}
+              disabled={send.isPending || sendable.length === 0 || cwd === null || targetAgent === null}
               palette={palette}
               onPress={() => send.mutate()}
             />
@@ -354,6 +387,14 @@ export function CommitReviewPanel({ theme, layout, workspaceId, agentId }: Plugi
         </View>
       ) : null}
 
+      <AgentPicker
+        open={agentPickerOpen}
+        agents={agentList}
+        selectedId={targetAgent?.id ?? null}
+        palette={palette}
+        onOpenChange={setAgentPickerOpen}
+        onSelect={(agentId) => preferAgent(workspaceId, agentId)}
+      />
       <CommitPicker
         open={pickerOpen}
         commits={commitList}

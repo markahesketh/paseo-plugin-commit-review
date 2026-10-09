@@ -1,14 +1,15 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { CommitReviewPanel } from "./client/commit-review-panel";
+import { preferAgent } from "./client/target-agent";
 
 export default function contribute(client: PluginClientContext) {
   client.addWorkspacePanel({
     id: "commit-review",
-    title: "Review commit",
+    title: "Commit review",
     icon: "GitCommitHorizontal",
-    context: "agent",
-    // The Explorer holds Files and Changes. Its + menu lists only workspace
-    // panels, so the command and slash command open this one there.
+    // A workspace panel, so the Explorer's + menu lists it beside Diff and
+    // Pull request. The review goes to an agent picked in the panel.
+    context: "workspace",
     locations: ["explorer", "workspace"],
     Component: CommitReviewPanel,
   });
@@ -18,7 +19,8 @@ export default function contribute(client: PluginClientContext) {
     icon: "GitCommitHorizontal",
     keywords: ["commit", "review", "diff", "comment"],
     context: "agent",
-    onSelect({ openPanel }) {
+    onSelect({ workspace, agent, openPanel }) {
+      preferAgent(workspace.id, agent.id);
       openPanel("commit-review", { location: "explorer" });
     },
   });
@@ -27,7 +29,8 @@ export default function contribute(client: PluginClientContext) {
     description: "Review a single commit and send comments to this agent",
     argumentHint: "",
     context: "agent",
-    onSubmit({ openPanel }) {
+    onSubmit({ workspace, agent, openPanel }) {
+      preferAgent(workspace.id, agent.id);
       openPanel("commit-review", { location: "explorer" });
     },
   });
