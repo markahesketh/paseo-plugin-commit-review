@@ -42,7 +42,10 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
   const paseo = usePaseo();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const cwd = useWorkspace(workspaceId, (workspace) => workspace.directory);
+  const workspace = useWorkspace(workspaceId, ({ directory, projectKind }) => ({ directory, projectKind }));
+  const cwd = workspace?.directory ?? null;
+  // Paseo already knows whether the project is a Git repository, so git never runs for one that is not.
+  const isGit = workspace?.projectKind === "git";
   const agents = useWorkspaceAgents(workspaceId);
   const preferredAgentId = usePreferredAgent(workspaceId);
   const agentList = agents.data ?? [];
@@ -68,6 +71,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
   const commits = useQuery({
     queryKey: ["commits", workspaceId],
     queryFn: () => listCommits({ workspaceId }),
+    enabled: isGit,
   });
   const commitList = commits.data?.commits ?? [];
   // A selected commit that leaves the list (amend, rebase) falls back to the newest.
@@ -87,7 +91,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
   const diff = useQuery({
     queryKey: ["diff", workspaceId, sha],
     queryFn: () => commitDiff({ workspaceId, sha: sha! }),
-    enabled: sha !== null,
+    enabled: isGit && sha !== null,
     staleTime: Infinity,
   });
   const comments = useQuery({
@@ -232,6 +236,8 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
   let body: React.ReactNode;
   if (cwd === null) {
     body = <Notice text="Workspace not available." palette={palette} />;
+  } else if (!isGit) {
+    body = <Notice text="This workspace is not a Git repository." palette={palette} />;
   } else if (commits.isPending || (sha !== null && diff.isPending)) {
     body = (
       <View style={{ padding: 24, alignItems: "center" }}>
