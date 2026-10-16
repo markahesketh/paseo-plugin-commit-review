@@ -1,5 +1,4 @@
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
-import { isHovered } from "./hover";
 import { usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import { FlatList, Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,16 +16,10 @@ import {
 import { AgentPicker } from "./agent-picker";
 import { agentLabel, useWorkspaceAgents } from "./agents";
 import { CommitPicker, CommitSummaryLine } from "./commit-picker";
-import {
-  CommentCard,
-  CommentEditor,
-  FileHeader,
-  HunkHeader,
-  LineRow,
-  Notice,
-  SmallButton,
-  gutterWidth,
-} from "./diff-rows";
+import { CommentCard, CommentEditor } from "./comment-card";
+import { Notice, SmallButton } from "./controls";
+import { FileHeader, HunkHeader, LineRow, gutterWidth } from "./diff-rows";
+import { surfaceColor } from "./hover";
 import { createDiffPalette } from "./palette";
 import { buildRows, targetKey, type DiffRow, type LineTarget } from "./rows";
 import { preferAgent, usePreferredAgent } from "./target-agent";
@@ -293,7 +286,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
             paddingHorizontal: 8,
             paddingVertical: 6,
             borderRadius: 6,
-            backgroundColor: isHovered(state) ? palette.raised : palette.surface,
+            backgroundColor: surfaceColor(state, palette),
           })}
         >
           <Icon name="GitCommitHorizontal" size={16} color={palette.foregroundMuted} />
@@ -373,7 +366,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
                 paddingHorizontal: 8,
                 paddingVertical: 6,
                 borderRadius: 6,
-                backgroundColor: isHovered(state) ? palette.raised : palette.surface,
+                backgroundColor: surfaceColor(state, palette),
               })}
             >
               <Icon name="Bot" size={14} color={palette.foregroundMuted} />
