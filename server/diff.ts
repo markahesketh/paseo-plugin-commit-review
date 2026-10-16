@@ -183,7 +183,7 @@ export async function getCommitDiff({
     "--src-prefix=a/",
     "--dst-prefix=b/",
     "--end-of-options",
-    sha,
+    `${sha}^{commit}`,
     "--",
   ]);
   const files = parseUnifiedDiff(diff);

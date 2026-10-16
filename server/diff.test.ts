@@ -58,6 +58,15 @@ describe("getCommitDiff", () => {
     expect(existsSync(output)).toBe(false);
   });
 
+  it("rejects a SHA that is not a commit", async () => {
+    repo.commit("Initial", { "a.txt": "a\n" });
+    const blob = repo.run("rev-parse", "HEAD:a.txt");
+    const tree = repo.run("rev-parse", "HEAD^{tree}");
+
+    await expect(getCommitDiff({ cwd: repo.cwd, sha: blob })).rejects.toThrow();
+    await expect(getCommitDiff({ cwd: repo.cwd, sha: tree })).rejects.toThrow();
+  });
+
   it("highlights with whole-file context outside the hunk", async () => {
     const opening = "/*\n" + "comment\n".repeat(10);
     repo.commit("Initial", { "a.ts": opening + "old\n*/\n" });
