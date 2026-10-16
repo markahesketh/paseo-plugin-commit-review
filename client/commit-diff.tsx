@@ -9,7 +9,7 @@ import { Notice } from "./controls";
 import { FileHeader, HunkHeader, LineRow, gutterWidth } from "./diff-rows";
 import type { DiffPalette } from "./palette";
 import { errorText, reviewQueryKey, type ReviewCommentActions } from "./queries";
-import { buildRows, targetKey, type DiffRow, type LineTarget } from "./rows";
+import { buildRows, draftText, editorKey, type DiffRow, type Draft, type Editor, type LineTarget } from "./rows";
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
@@ -31,16 +31,15 @@ export function CommitDiff(props: {
     staleTime: Infinity,
   });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(EMPTY_SET);
-  const [editing, setEditing] = useState<LineTarget | null>(null);
-  // The new-comment draft outlives the editor row when the list virtualizes it away.
-  const draft = useRef("");
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const draft = useRef<Draft | null>(null);
 
   const files = diff.data?.files ?? [];
   const comments = useMemo(
     () => props.comments.filter((comment) => comment.sha === commit.sha),
     [props.comments, commit.sha],
   );
-  const rows = useMemo(() => buildRows({ files, comments, collapsed, editing }), [files, comments, collapsed, editing]);
+  const rows = useMemo(() => buildRows({ files, comments, collapsed, editor }), [files, comments, collapsed, editor]);
   const gutter = useMemo(() => gutterWidth(files), [files]);
 
   const toggleFile = useCallback((fileKey: string) => {
@@ -51,13 +50,31 @@ export function CommitDiff(props: {
       return next;
     });
   }, []);
-  const toggleEditing = useCallback((target: LineTarget) => {
-    draft.current = "";
-    setEditing((current) => (current && targetKey(current) === targetKey(target) ? null : target));
+  // Cancelling discards the draft, so every editor change drops it before the
+  // next render reads it.
+  const changeEditor = useCallback((next: Editor | null) => {
+    draft.current = null;
+    setEditor(next);
   }, []);
+  const toggleLineEditor = useCallback(
+    (target: LineTarget) => {
+      const next: Editor = { kind: "new", target };
+      changeEditor(editor && editorKey(editor) === editorKey(next) ? null : next);
+    },
+    [changeEditor, editor],
+  );
 
   const renderRow = useCallback(
     ({ item }: { item: DiffRow }) => {
+      const editorProps = (editor: Editor, initialBody: string) => ({
+        palette,
+        inset: gutter,
+        initialBody: draftText(draft.current, editor, initialBody),
+        onChangeBody: (text: string) => {
+          draft.current = { editor, text };
+        },
+        onCancel: () => changeEditor(null),
+      });
       switch (item.kind) {
         case "file":
           return (
@@ -82,7 +99,7 @@ export function CommitDiff(props: {
               selected={item.selected}
               gutter={gutter}
               palette={palette}
-              onPress={toggleEditing}
+              onPress={toggleLineEditor}
             />
           );
         case "comment":
@@ -91,30 +108,35 @@ export function CommitDiff(props: {
               comment={item.comment}
               palette={palette}
               inset={gutter}
-              onUpdate={(id, body) => update({ id, body })}
+              onEdit={(id) => changeEditor({ kind: "edit", commentId: id })}
               onRemove={(id) => void remove([id])}
             />
           );
-        case "editor":
+        case "edit-comment":
           return (
             <CommentEditor
-              initialBody={draft.current}
-              submitLabel="Comment"
-              palette={palette}
-              inset={gutter}
-              onChangeBody={(body) => {
-                draft.current = body;
-              }}
-              onCancel={() => setEditing(null)}
+              {...editorProps(item.editor, item.comment.body)}
+              submitLabel="Save"
               onSubmit={(body) => {
-                add({ sha: commit.sha, baseRef: commit.baseRef, ...item.target, body, context: item.context });
-                setEditing(null);
+                update({ id: item.comment.id, body });
+                changeEditor(null);
+              }}
+            />
+          );
+        case "new-comment":
+          return (
+            <CommentEditor
+              {...editorProps(item.editor, "")}
+              submitLabel="Comment"
+              onSubmit={(body) => {
+                add({ sha: commit.sha, baseRef: commit.baseRef, ...item.editor.target, body, context: item.context });
+                changeEditor(null);
               }}
             />
           );
       }
     },
-    [palette, gutter, toggleFile, toggleEditing, update, remove, add, commit],
+    [palette, gutter, toggleFile, toggleLineEditor, changeEditor, update, remove, add, commit],
   );
 
   if (diff.isPending) {

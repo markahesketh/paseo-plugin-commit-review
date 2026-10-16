@@ -17,7 +17,7 @@ export function CommentEditor(props: {
   submitLabel: string;
   palette: DiffPalette;
   inset: number;
-  onChangeBody?(body: string): void;
+  onChangeBody(body: string): void;
   onCancel(): void;
   onSubmit(body: string): void;
 }) {
@@ -25,7 +25,7 @@ export function CommentEditor(props: {
   const [body, setBody] = useState(props.initialBody);
   const changeBody = (text: string) => {
     setBody(text);
-    props.onChangeBody?.(text);
+    props.onChangeBody(text);
   };
   const empty = body.trim().length === 0;
   const submit = () => {
@@ -105,26 +105,10 @@ export function CommentCard(props: {
   comment: ReviewComment;
   palette: DiffPalette;
   inset: number;
-  onUpdate(id: string, body: string): void;
+  onEdit(id: string): void;
   onRemove(id: string): void;
 }) {
   const { comment, palette } = props;
-  const [editing, setEditing] = useState(false);
-  if (editing) {
-    return (
-      <CommentEditor
-        initialBody={comment.body}
-        submitLabel="Save"
-        palette={palette}
-        inset={props.inset}
-        onCancel={() => setEditing(false)}
-        onSubmit={(body) => {
-          props.onUpdate(comment.id, body);
-          setEditing(false);
-        }}
-      />
-    );
-  }
   return (
     <View
       style={{
@@ -148,7 +132,7 @@ export function CommentCard(props: {
         accessibilityRole="button"
         accessibilityLabel="Edit comment"
         hitSlop={8}
-        onPress={() => setEditing(true)}
+        onPress={() => props.onEdit(comment.id)}
       >
         <Icon name="Pencil" size={14} color={palette.foregroundMuted} />
       </Pressable>
