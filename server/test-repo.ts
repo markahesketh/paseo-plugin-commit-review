@@ -8,7 +8,6 @@ import { afterEach, beforeEach } from "vitest";
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
-// A temporary repository for each test.
 export function useTestRepo() {
   const repo = {
     cwd: "",

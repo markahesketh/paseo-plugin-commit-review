@@ -80,7 +80,6 @@ export async function* gitLines(cwd: string, args: readonly string[]): AsyncGene
   }
 }
 
-// Sizes of the given objects that exist and are blobs.
 export async function blobSizes(cwd: string, oids: readonly string[]): Promise<Map<string, number>> {
   const output = await git(cwd, ["cat-file", "--batch-check"], oids.map((oid) => `${oid}\n`).join(""));
   const sizes = new Map<string, number>();
@@ -91,7 +90,6 @@ export async function blobSizes(cwd: string, oids: readonly string[]): Promise<M
   return sizes;
 }
 
-// Contents of the given blobs, read through one process.
 export async function readBlobs(cwd: string, oids: readonly string[]): Promise<Map<string, string>> {
   const output = await gitBuffer(cwd, ["cat-file", "--batch"], oids.map((oid) => `${oid}\n`).join(""));
   const blobs = new Map<string, string>();
