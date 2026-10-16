@@ -1,8 +1,6 @@
-import type { ReviewComment, ReviewContextLine, ReviewSide } from "./review";
+import type { ReviewComment, ReviewCommentContext, ReviewSide } from "./review";
 
-// Paseo's own review attachment. The daemon renders it into the prompt and the
-// chat shows it as the native Review pill. Paseo has no commit mode, so a
-// commit is a "base" review of the range `<sha>^..<sha>`.
+// Paseo has no commit mode, so a commit is a "base" review of the range `<parent>..<sha>`.
 export interface ReviewAttachment {
   type: "review";
   mimeType: "application/paseo-review";
@@ -14,7 +12,7 @@ export interface ReviewAttachment {
     side: ReviewSide;
     lineNumber: number;
     body: string;
-    context: { hunkHeader: string; targetLine: ReviewContextLine; lines: ReviewContextLine[] };
+    context: ReviewCommentContext;
   }>;
 }
 
@@ -24,30 +22,13 @@ export function buildReviewAttachments(input: {
   comments: readonly ReviewComment[];
 }): ReviewAttachment[] {
   const bySha = new Map<string, ReviewAttachment>();
-  for (const comment of input.comments) {
-    let attachment = bySha.get(comment.sha);
+  for (const { sha, baseRef, filePath, side, lineNumber, body, context } of input.comments) {
+    let attachment = bySha.get(sha);
     if (!attachment) {
-      attachment = {
-        type: "review",
-        mimeType: "application/paseo-review",
-        cwd: input.cwd,
-        mode: "base",
-        baseRef: `${comment.shortSha}^..${comment.shortSha}`,
-        comments: [],
-      };
-      bySha.set(comment.sha, attachment);
+      attachment = { type: "review", mimeType: "application/paseo-review", cwd: input.cwd, mode: "base", baseRef, comments: [] };
+      bySha.set(sha, attachment);
     }
-    attachment.comments.push({
-      filePath: comment.filePath,
-      side: comment.side,
-      lineNumber: comment.lineNumber,
-      body: comment.body,
-      context: {
-        hunkHeader: comment.hunkHeader,
-        targetLine: comment.contextLines[comment.targetIndex],
-        lines: comment.contextLines,
-      },
-    });
+    attachment.comments.push({ filePath, side, lineNumber, body, context });
   }
   return [...bySha.values()];
 }

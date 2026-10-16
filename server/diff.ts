@@ -1,16 +1,18 @@
 import { highlightCode, isLanguageSupported } from "@getpaseo/highlight";
 import type { DiffFile, DiffHunk, DiffLine, HighlightToken } from "../shared/review";
-import { git, readFileAtRevision } from "./git";
+import { blobSizes, gitLines, readBlobs } from "./git";
 
 const MAX_FILE_DIFF_LINES = 5_000;
-const MAX_HIGHLIGHT_FILE_CHARS = 1_000_000;
 const MAX_HIGHLIGHT_LINE_CHARS = 10_000;
+const MAX_HIGHLIGHT_FILE_BYTES = 1_000_000;
+const MAX_COMMIT_DIFF_CHARS = 1_000_000;
+const MAX_COMMIT_HIGHLIGHT_BYTES = 2_000_000;
 
 const C_ESCAPES: Record<string, string> = { a: "\x07", b: "\b", t: "\t", n: "\n", v: "\v", f: "\f", r: "\r" };
 
 // Git C-quotes paths with quotes, backslashes or control characters, even with
 // core.quotePath=false. Octal escapes are UTF-8 bytes.
-export function unquotePath(path: string): string {
+function unquotePath(path: string): string {
   if (!path.startsWith('"') || !path.endsWith('"')) return path;
   const bytes: number[] = [];
   const body = path.slice(1, -1);
@@ -47,9 +49,13 @@ function metadataPath(lines: readonly string[], marker: "--- " | "+++ "): string
   return stripPrefix(path, marker === "--- " ? "a/" : "b/");
 }
 
-function headerPaths(firstLine: string): { oldPath: string; newPath: string } | null {
-  const match = firstLine.match(/^("?a\/.+"?) ("?b\/.+"?)$/);
-  return match ? { oldPath: stripPrefix(match[1], "a/"), newPath: stripPrefix(match[2], "b/") } : null;
+// The `diff --git a/X b/Y` line is ambiguous when a path contains " b/". Only
+// files without ---/+++ or rename lines need it, and those keep their path, so
+// X and Y are the same and the line splits into two halves of equal length.
+function headerPath(firstLine: string): string | null {
+  const half = (firstLine.length - 1) / 2;
+  const oldPath = stripPrefix(firstLine.slice(0, half), "a/");
+  return firstLine[half] === " " && oldPath === stripPrefix(firstLine.slice(half + 1), "b/") ? oldPath : null;
 }
 
 function prefixedValue(lines: readonly string[], prefix: string): string | null {
@@ -57,75 +63,127 @@ function prefixedValue(lines: readonly string[], prefix: string): string | null 
   return line ? unquotePath(line.slice(prefix.length)) : null;
 }
 
-function parseSection(section: string): DiffFile {
-  const lines = section.split("\n");
-  const header = headerPaths(lines[0] ?? "");
+interface Section {
+  header: string[];
+  inHunks: boolean;
+  hunks: DiffHunk[] | null;
+  oldLine: number;
+  newLine: number;
+  additions: number;
+  deletions: number;
+  lineCount: number;
+  chars: number;
+}
+
+interface ParsedFile {
+  file: DiffFile;
+  oldBlob: string | null;
+  newBlob: string | null;
+}
+
+function readLine(section: Section, line: string, budget: number): void {
+  const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+  if (hunkMatch) {
+    section.inHunks = true;
+    section.hunks?.push({ header: line, lines: [] });
+    section.oldLine = Number.parseInt(hunkMatch[1], 10);
+    section.newLine = Number.parseInt(hunkMatch[2], 10);
+    return;
+  }
+  if (!section.inHunks) {
+    section.header.push(line);
+    return;
+  }
+  const content = line.slice(1);
+  let parsed: DiffLine;
+  if (line[0] === "+") {
+    parsed = { type: "add", content, oldLineNumber: null, newLineNumber: section.newLine++, tokens: null };
+    section.additions++;
+  } else if (line[0] === "-") {
+    parsed = { type: "remove", content, oldLineNumber: section.oldLine++, newLineNumber: null, tokens: null };
+    section.deletions++;
+  } else if (line[0] === " ") {
+    parsed = { type: "context", content, oldLineNumber: section.oldLine++, newLineNumber: section.newLine++, tokens: null };
+  } else {
+    return;
+  }
+  section.lineCount++;
+  section.chars += line.length;
+  if (section.lineCount > MAX_FILE_DIFF_LINES || section.chars > budget) section.hunks = null;
+  section.hunks?.at(-1)?.lines.push(parsed);
+}
+
+function finishSection({ header: lines, hunks, additions, deletions }: Section): ParsedFile {
+  const header = headerPath(lines[0]);
   const renameFrom = prefixedValue(lines, "rename from ");
   const renameTo = prefixedValue(lines, "rename to ");
   const isNew = lines.some((line) => line.startsWith("new file mode"));
   const isDeleted = lines.some((line) => line.startsWith("deleted file mode"));
-  const oldPath = renameFrom ?? metadataPath(lines, "--- ") ?? header?.oldPath ?? null;
-  const newPath = renameTo ?? metadataPath(lines, "+++ ") ?? header?.newPath ?? null;
+  const oldPath = renameFrom ?? metadataPath(lines, "--- ") ?? header;
+  const newPath = renameTo ?? metadataPath(lines, "+++ ") ?? header;
   const path = (isDeleted ? oldPath : newPath) ?? oldPath ?? "unknown";
-  const change = isNew ? "added" : isDeleted ? "deleted" : renameFrom ? "renamed" : "modified";
+  const change: DiffFile["change"] = isNew ? "added" : isDeleted ? "deleted" : renameFrom ? "renamed" : "modified";
   const binary = lines.some((line) => line.startsWith("Binary files ") || line === "GIT binary patch");
+  // Full object names with --full-index; all zeros on the side where the file does not exist.
+  const index = lines.map((line) => line.match(/^index ([0-9a-f]+)\.\.([0-9a-f]+)/)).find(Boolean);
+  const blob = (name: string | undefined) => (name && !/^0+$/.test(name) ? name : null);
 
-  const hunks: DiffHunk[] = [];
-  let hunk: DiffHunk | null = null;
-  let oldLine = 0;
-  let newLine = 0;
-  let additions = 0;
-  let deletions = 0;
-  let lineCount = 0;
+  const base = { path, oldPath: change === "renamed" ? oldPath : null, change, additions, deletions };
+  if (binary) return { file: { ...base, status: "binary" }, oldBlob: null, newBlob: null };
+  if (!hunks) return { file: { ...base, status: "too_large" }, oldBlob: null, newBlob: null };
+  return { file: { ...base, status: "ok", hunks }, oldBlob: blob(index?.[1]), newBlob: blob(index?.[2]) };
+}
 
-  for (const line of lines.slice(1)) {
-    const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
-      hunk = { header: line, lines: [] };
-      hunks.push(hunk);
-      oldLine = Number.parseInt(hunkMatch[1], 10);
-      newLine = Number.parseInt(hunkMatch[2], 10);
-      continue;
-    }
-    if (!hunk) continue;
-    const marker = line[0];
-    let parsed: DiffLine | null = null;
-    if (marker === "+") {
-      parsed = { type: "add", content: line.slice(1), oldLineNumber: null, newLineNumber: newLine++, tokens: null };
-      additions++;
-    } else if (marker === "-") {
-      parsed = { type: "remove", content: line.slice(1), oldLineNumber: oldLine++, newLineNumber: null, tokens: null };
-      deletions++;
-    } else if (marker === " ") {
-      parsed = { type: "context", content: line.slice(1), oldLineNumber: oldLine++, newLineNumber: newLine++, tokens: null };
-    }
-    if (parsed) {
-      hunk.lines.push(parsed);
-      lineCount++;
+async function parseDiff(lines: AsyncIterable<string>): Promise<ParsedFile[]> {
+  const files: ParsedFile[] = [];
+  let budget = MAX_COMMIT_DIFF_CHARS;
+  const finish = (section: Section) => {
+    const parsed = finishSection(section);
+    if (parsed.file.status === "ok") budget -= section.chars;
+    files.push(parsed);
+  };
+  let section: Section | null = null;
+  for await (const line of lines) {
+    if (line.startsWith("diff --git ")) {
+      if (section) finish(section);
+      section = {
+        header: [line.slice("diff --git ".length)],
+        inHunks: false,
+        hunks: [],
+        oldLine: 0,
+        newLine: 0,
+        additions: 0,
+        deletions: 0,
+        lineCount: 0,
+        chars: 0,
+      };
+    } else if (section) {
+      readLine(section, line, budget);
     }
   }
-
-  const status = binary ? "binary" : lineCount > MAX_FILE_DIFF_LINES ? "too_large" : "ok";
-  return {
-    path,
-    oldPath: change === "renamed" ? oldPath : null,
-    change,
-    additions,
-    deletions,
-    status,
-    hunks: status === "ok" ? hunks : [],
-  };
+  if (section) finish(section);
+  return files;
 }
 
-export function parseUnifiedDiff(diff: string): DiffFile[] {
-  return diff
-    .split(/^diff --git /m)
-    .filter((section) => section.trim().length > 0)
-    .map(parseSection);
+async function readDocuments(cwd: string, files: readonly ParsedFile[]): Promise<Map<string, string>> {
+  const highlightable = files.filter(({ file }) => file.status === "ok" && isLanguageSupported(file.path));
+  const blobsOf = ({ oldBlob, newBlob }: ParsedFile) =>
+    [oldBlob, newBlob].filter((blob): blob is string => blob !== null);
+  const sizes = await blobSizes(cwd, highlightable.flatMap(blobsOf));
+  const wanted = new Set<string>();
+  let budget = MAX_COMMIT_HIGHLIGHT_BYTES;
+  for (const file of highlightable) {
+    const blobs = blobsOf(file).filter((blob) => (sizes.get(blob) ?? Infinity) <= MAX_HIGHLIGHT_FILE_BYTES);
+    const cost = blobs.reduce((total, blob) => total + (sizes.get(blob) ?? 0), 0);
+    if (cost > budget) continue;
+    budget -= cost;
+    for (const blob of blobs) wanted.add(blob);
+  }
+  return readBlobs(cwd, [...wanted]);
 }
 
-function highlightDocument(content: string | null, path: string): HighlightToken[][] | null {
-  if (content === null || content.length > MAX_HIGHLIGHT_FILE_CHARS) return null;
+function highlightDocument(content: string | undefined, path: string): HighlightToken[][] | null {
+  if (content === undefined) return null;
   try {
     return highlightCode(content, path);
   } catch {
@@ -147,15 +205,11 @@ function tokensFor(
 
 // Highlights whole old and new documents, like Paseo's own diff highlighter, so
 // the parser sees multi-line strings and comments that start outside a hunk.
-async function highlightFile(cwd: string, sha: string, file: DiffFile): Promise<DiffFile> {
-  if (file.status !== "ok" || !isLanguageSupported(file.path)) return file;
-  const oldPath = file.oldPath ?? file.path;
-  const [oldContent, newContent] = await Promise.all([
-    file.change === "added" ? null : readFileAtRevision(cwd, `${sha}^`, oldPath),
-    file.change === "deleted" ? null : readFileAtRevision(cwd, sha, file.path),
-  ]);
-  const oldDocument = highlightDocument(oldContent, oldPath);
-  const newDocument = highlightDocument(newContent, file.path);
+function highlightFile({ file, oldBlob, newBlob }: ParsedFile, documents: Map<string, string>): DiffFile {
+  if (file.status !== "ok") return file;
+  const oldDocument = highlightDocument(oldBlob ? documents.get(oldBlob) : undefined, file.oldPath ?? file.path);
+  const newDocument = highlightDocument(newBlob ? documents.get(newBlob) : undefined, file.path);
+  if (!oldDocument && !newDocument) return file;
   return {
     ...file,
     hunks: file.hunks.map((hunk) => ({
@@ -178,20 +232,29 @@ export async function getCommitDiff({
   cwd: string;
   sha: string;
 }): Promise<{ files: DiffFile[] }> {
-  const diff = await git(cwd, [
-    "show",
-    "--format=",
-    "--patch",
-    "--find-renames",
-    "--no-ext-diff",
-    "--no-textconv",
-    "--first-parent",
-    "--src-prefix=a/",
-    "--dst-prefix=b/",
-    "--end-of-options",
-    sha,
-    "--",
-  ]);
-  const files = parseUnifiedDiff(diff);
-  return { files: await Promise.all(files.map((file) => highlightFile(cwd, sha, file))) };
+  const files = await parseDiff(
+    gitLines(cwd, [
+      "show",
+      "--format=",
+      "--patch",
+      "--full-index",
+      "--find-renames",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--first-parent",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      "--end-of-options",
+      `${sha}^{commit}`,
+      "--",
+    ]),
+  );
+  const documents = await readDocuments(cwd, files);
+  const highlighted: DiffFile[] = [];
+  for (const file of files) {
+    highlighted.push(highlightFile(file, documents));
+    // Highlighting is synchronous; yield between files so other requests are served.
+    await new Promise(setImmediate);
+  }
+  return { files: highlighted };
 }

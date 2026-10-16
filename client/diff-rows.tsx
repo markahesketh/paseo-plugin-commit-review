@@ -1,16 +1,8 @@
-import { Icon, TextInput } from "@getpaseo/plugin/client/react-native";
-import { isHovered } from "./hover";
-import { memo, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  Text,
-  View,
-  type NativeSyntheticEvent,
-  type TextInputKeyPressEventData,
-} from "react-native";
-import type { DiffFile, DiffLine, ReviewComment } from "../shared/review";
-import type { LineTarget } from "./rows";
+import { Icon } from "@getpaseo/plugin/client/react-native";
+import { memo } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { DiffFile, DiffLine } from "../shared/review";
+import { isHovered, surfaceColor } from "./hover";
 import {
   ADDITION_TINT_OPACITY,
   CODE_FONT_SIZE,
@@ -19,6 +11,7 @@ import {
   MONO_FONT,
   type DiffPalette,
 } from "./palette";
+import type { LineTarget } from "./rows";
 
 const GUTTER_PADDING = 8;
 const CODE_PADDING = 8;
@@ -27,6 +20,7 @@ const DIGIT_WIDTH = CODE_FONT_SIZE * 0.62;
 export function gutterWidth(files: readonly DiffFile[]): number {
   let max = 1;
   for (const file of files) {
+    if (file.status !== "ok") continue;
     for (const hunk of file.hunks) {
       for (const line of hunk.lines) {
         max = Math.max(max, line.oldLineNumber ?? 0, line.newLineNumber ?? 0);
@@ -69,7 +63,7 @@ export const FileHeader = memo(function FileHeader(props: {
         borderTopWidth: 1,
         borderBottomWidth: props.collapsed ? 0 : 1,
         borderColor: palette.border,
-        backgroundColor: isHovered(state) ? palette.raised : palette.surface,
+        backgroundColor: surfaceColor(state, palette),
       })}
     >
       <Icon
@@ -117,14 +111,6 @@ export function HunkHeader({ header, palette }: { header: string; palette: DiffP
   );
 }
 
-export function Notice({ text, palette }: { text: string; palette: DiffPalette }) {
-  return (
-    <View style={{ padding: 12 }}>
-      <Text style={{ color: palette.foregroundMuted, fontSize: 13 }}>{text}</Text>
-    </View>
-  );
-}
-
 function CodeText({ line, palette }: { line: DiffLine; palette: DiffPalette }) {
   if (!line.tokens) return <>{line.content}</>;
   return (
@@ -168,6 +154,21 @@ function AddCommentIcon({ palette }: { palette: DiffPalette }) {
   );
 }
 
+function Overlay({ color, opacity }: { color: string; opacity: number }) {
+  return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity }]} />;
+}
+
+function lineTint(line: DiffLine, palette: DiffPalette): { color: string; opacity: number } | null {
+  switch (line.type) {
+    case "add":
+      return { color: palette.addition, opacity: ADDITION_TINT_OPACITY };
+    case "remove":
+      return { color: palette.deletion, opacity: DELETION_TINT_OPACITY };
+    case "context":
+      return null;
+  }
+}
+
 export const LineRow = memo(function LineRow(props: {
   line: DiffLine;
   target: LineTarget;
@@ -177,46 +178,19 @@ export const LineRow = memo(function LineRow(props: {
   onPress(target: LineTarget): void;
 }) {
   const { line, palette } = props;
-  const lineNumber = line.type === "remove" ? line.oldLineNumber : line.newLineNumber;
-  const tint = line.type === "add" ? palette.addition : line.type === "remove" ? palette.deletion : null;
-  const numberColor =
-    line.type === "add" ? palette.addition : line.type === "remove" ? palette.deletion : palette.foregroundMuted;
+  const tint = lineTint(line, palette);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Comment on line ${lineNumber ?? ""}`}
+      accessibilityLabel={`Comment on line ${props.target.lineNumber}`}
       onPress={() => props.onPress(props.target)}
       style={{ flexDirection: "row" }}
     >
       {(state) => (
         <>
-          {tint ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: tint,
-                opacity: line.type === "add" ? ADDITION_TINT_OPACITY : DELETION_TINT_OPACITY,
-              }}
-            />
-          ) : null}
+          {tint ? <Overlay {...tint} /> : null}
           {props.selected || isHovered(state) ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: palette.accent,
-                opacity: props.selected ? 0.16 : 0.08,
-              }}
-            />
+            <Overlay color={palette.accent} opacity={props.selected ? 0.16 : 0.08} />
           ) : null}
           <View
             style={{
@@ -229,13 +203,13 @@ export const LineRow = memo(function LineRow(props: {
           >
             <Text
               style={{
-                color: numberColor,
+                color: tint?.color ?? palette.foregroundMuted,
                 fontFamily: MONO_FONT,
                 fontSize: CODE_FONT_SIZE,
                 lineHeight: CODE_LINE_HEIGHT,
               }}
             >
-              {lineNumber ?? ""}
+              {props.target.lineNumber}
             </Text>
             {isHovered(state) ? <AddCommentIcon palette={palette} /> : null}
           </View>
@@ -256,189 +230,3 @@ export const LineRow = memo(function LineRow(props: {
     </Pressable>
   );
 });
-
-function SmallButton(props: {
-  label: string;
-  variant: "primary" | "secondary";
-  disabled?: boolean;
-  palette: DiffPalette;
-  onPress(): void;
-}) {
-  const { palette } = props;
-  const primary = props.variant === "primary";
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={props.label}
-      disabled={props.disabled}
-      onPress={props.onPress}
-      style={(state) => ({
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 6,
-        borderWidth: primary ? 0 : 1,
-        borderColor: palette.border,
-        backgroundColor: primary ? palette.accent : isHovered(state) ? palette.raised : palette.surface,
-        opacity: props.disabled ? 0.5 : 1,
-      })}
-    >
-      <Text style={{ color: primary ? palette.accentForeground : palette.foreground, fontSize: 13 }}>
-        {props.label}
-      </Text>
-    </Pressable>
-  );
-}
-
-export { SmallButton };
-
-export function CommentEditor(props: {
-  initialBody: string;
-  submitLabel: string;
-  palette: DiffPalette;
-  inset: number;
-  onChangeBody?(body: string): void;
-  onCancel(): void;
-  onSubmit(body: string): void;
-}) {
-  const { palette } = props;
-  const [body, setBody] = useState(props.initialBody);
-  const changeBody = (text: string) => {
-    setBody(text);
-    props.onChangeBody?.(text);
-  };
-  const empty = body.trim().length === 0;
-  const submit = () => {
-    if (!empty) props.onSubmit(body.trim());
-  };
-  // Enter submits and Shift+Enter adds a new line. Soft keyboards have no
-  // Shift+Enter, so native platforms submit through the return key instead.
-  const onKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
-    const { key, shiftKey, isComposing, keyCode } = event.nativeEvent as TextInputKeyPressEventData & {
-      shiftKey?: boolean;
-      isComposing?: boolean;
-      keyCode?: number;
-    };
-    // Enter that confirms an IME composition belongs to the IME. Safari reports
-    // that Enter with keyCode 229 and isComposing false.
-    if (isComposing || keyCode === 229) return;
-    if (key === "Escape") {
-      event.preventDefault();
-      props.onCancel();
-    } else if (key === "Enter" && !shiftKey) {
-      event.preventDefault();
-      submit();
-    }
-  };
-  return (
-    <View
-      style={{
-        marginLeft: props.inset,
-        marginRight: 12,
-        marginVertical: 6,
-        padding: 10,
-        gap: 8,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: palette.border,
-        backgroundColor: palette.raised,
-      }}
-    >
-      <TextInput
-        autoFocus
-        multiline
-        value={body}
-        onChangeText={changeBody}
-        {...(Platform.OS === "web"
-          ? { onKeyPress }
-          : { submitBehavior: "submit" as const, returnKeyType: "send" as const, onSubmitEditing: submit })}
-        placeholder="Leave a comment"
-        placeholderTextColor={palette.foregroundMuted}
-        accessibilityLabel="Review comment"
-        style={{
-          minHeight: 64,
-          padding: 8,
-          borderRadius: 6,
-          borderWidth: 1,
-          borderColor: palette.border,
-          backgroundColor: palette.surface,
-          color: palette.foreground,
-          fontSize: 13,
-          textAlignVertical: "top",
-        }}
-      />
-      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-        <SmallButton label="Cancel" variant="secondary" palette={palette} onPress={props.onCancel} />
-        <SmallButton
-          label={props.submitLabel}
-          variant="primary"
-          disabled={empty}
-          palette={palette}
-          onPress={submit}
-        />
-      </View>
-    </View>
-  );
-}
-
-export function CommentCard(props: {
-  comment: ReviewComment;
-  palette: DiffPalette;
-  inset: number;
-  onUpdate(id: string, body: string): void;
-  onRemove(id: string): void;
-}) {
-  const { comment, palette } = props;
-  const [editing, setEditing] = useState(false);
-  if (editing) {
-    return (
-      <CommentEditor
-        initialBody={comment.body}
-        submitLabel="Save"
-        palette={palette}
-        inset={props.inset}
-        onCancel={() => setEditing(false)}
-        onSubmit={(body) => {
-          props.onUpdate(comment.id, body);
-          setEditing(false);
-        }}
-      />
-    );
-  }
-  return (
-    <View
-      style={{
-        marginLeft: props.inset,
-        marginRight: 12,
-        marginVertical: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        flexDirection: "row",
-        gap: 8,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: palette.border,
-        backgroundColor: palette.raised,
-      }}
-    >
-      <Text selectable style={{ flex: 1, color: palette.foreground, fontSize: 13, lineHeight: 19 }}>
-        {comment.body}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Edit comment"
-        hitSlop={8}
-        onPress={() => setEditing(true)}
-      >
-        <Icon name="Pencil" size={14} color={palette.foregroundMuted} />
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Delete comment"
-        hitSlop={8}
-        onPress={() => props.onRemove(comment.id)}
-      >
-        <Icon name="Trash2" size={14} color={palette.foregroundMuted} />
-      </Pressable>
-    </View>
-  );
-}
