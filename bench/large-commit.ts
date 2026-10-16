@@ -1,7 +1,7 @@
 // Measures commits.diff on a synthetic large commit: time, response size, the
 // longest event-loop block, child process errors, and files that lost highlighting.
 //
-//   node --no-warnings server/bench/large-commit.ts [many|huge] [--impl <dir>] [--repo <dir>]
+//   node --no-warnings bench/large-commit.ts [many|huge] [--impl <dir>] [--repo <dir>]
 //
 // many: 2,000 files of 200 lines, 100 lines changed in each.
 // huge: one added file whose diff is over git's 64 MB output buffer.
@@ -33,7 +33,7 @@ const { values, positionals } = parseArgs({
   options: { impl: { type: "string" }, repo: { type: "string" } },
 });
 const scenario = positionals[0] ?? "many";
-const impl = resolve(values.impl ?? join(import.meta.dirname, "../.."));
+const impl = resolve(values.impl ?? join(import.meta.dirname, ".."));
 const repo = values.repo ?? join(tmpdir(), `commit-review-bench-${scenario}`);
 
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
@@ -87,7 +87,7 @@ ChildProcess.prototype.emit = function (this: ChildProcess, event: string | symb
   return emit.call(this, event, ...args);
 } as typeof emit;
 
-const { getCommitDiff } = (await import(join(impl, "server/diff"))) as typeof import("../diff");
+const { getCommitDiff } = (await import(join(impl, "server/diff"))) as typeof import("../server/diff");
 
 const loop = monitorEventLoopDelay({ resolution: 10 });
 loop.enable();
