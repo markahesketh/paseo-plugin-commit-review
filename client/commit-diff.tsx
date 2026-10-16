@@ -112,7 +112,7 @@ function CommitDiffView(props: CommitDiffProps) {
               palette={palette}
               inset={gutter}
               onEdit={(id) => changeEditor({ kind: "edit", commentId: id })}
-              onRemove={(id) => void remove([id])}
+              onRemove={(id) => remove([id])}
             />
           );
         case "edit-comment":

@@ -21,7 +21,10 @@ export function ReviewFooter(props: {
   stale: readonly ReviewComment[];
   palette: DiffPalette;
   padding: number;
-  onRemove(ids: string[]): Promise<unknown>;
+  pendingCount: number;
+  reachabilityError: Error | null;
+  onRemove(ids: string[]): void;
+  onRemoveSent(ids: string[]): Promise<unknown>;
 }) {
   const { workspaceId, palette, sendable, stale } = props;
   const paseo = usePaseo();
@@ -42,7 +45,8 @@ export function ReviewFooter(props: {
         attachments: buildReviewAttachments({ cwd: props.cwd, comments: sendable }),
         activeTurnBehavior: "steer",
       });
-      await props.onRemove(sendable.map((comment) => comment.id));
+      // The review is sent even if clearing its drafts fails; that error has its own toast.
+      await props.onRemoveSent(sendable.map((comment) => comment.id)).catch(() => {});
     },
     onSuccess: () => {
       setMessage("");
@@ -51,7 +55,7 @@ export function ReviewFooter(props: {
     onError: (error) => toast.error(errorText(error)),
   });
 
-  if (sendable.length === 0 && stale.length === 0) return null;
+  if (sendable.length === 0 && stale.length === 0 && props.pendingCount === 0) return null;
   return (
     <View
       style={{
@@ -82,13 +86,14 @@ export function ReviewFooter(props: {
         <Text style={{ flex: 1, color: palette.foregroundMuted, fontSize: 12 }}>
           {countComments(sendable.length)}
           {stale.length > 0 ? ` · ${stale.length} on commits no longer in history` : ""}
+          {props.reachabilityError ? ` · Could not check commits: ${errorText(props.reachabilityError)}` : ""}
         </Text>
         {stale.length > 0 ? (
           <SmallButton
             label="Discard"
             variant="secondary"
             palette={palette}
-            onPress={() => void props.onRemove(stale.map((comment) => comment.id))}
+            onPress={() => props.onRemove(stale.map((comment) => comment.id))}
           />
         ) : null}
         <Pressable
@@ -118,7 +123,7 @@ export function ReviewFooter(props: {
         <SmallButton
           label={send.isPending ? "Sending…" : "Send"}
           variant="primary"
-          disabled={send.isPending || sendable.length === 0 || targetAgent === null}
+          disabled={send.isPending || sendable.length === 0 || props.pendingCount > 0 || targetAgent === null}
           palette={palette}
           onPress={() => send.mutate()}
         />

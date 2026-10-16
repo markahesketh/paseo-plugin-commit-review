@@ -1,6 +1,6 @@
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useRpc, useWorkspace } from "@getpaseo/plugin/client";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { listCommitsRpc, reachableCommitsRpc, type CommitSummary, type ReviewComment } from "../shared/review";
@@ -33,21 +33,24 @@ function useReachability(workspaceId: string, headSha: string | null, comments: 
   const query = useQuery({
     queryKey: reviewQueryKey(workspaceId, "reachable", headSha, shas),
     queryFn: async (): Promise<Reachability> => ({
+      head: headSha!,
       checked: new Set(shas),
       reachable: new Set((await reachableCommits({ workspaceId, shas })).shas),
     }),
     enabled: headSha !== null && shas.length > 0,
-    placeholderData: keepPreviousData,
+    // An answer for an older HEAD would send or discard the wrong comments.
+    placeholderData: (previous) => (previous?.head === headSha ? previous : undefined),
   });
-  return query.data ?? null;
+  return { reachability: query.data ?? null, error: query.error };
 }
 
 // Stays on its commit when new commits land, and falls back to the newest only
 // when the commit leaves the list.
-function usePinnedCommit(commits: readonly CommitSummary[]) {
+// A list from the cache can be older than HEAD, so the pin waits for a fetch.
+function usePinnedCommit(commits: readonly CommitSummary[], fresh: boolean) {
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const commit = commits.find((candidate) => candidate.sha === selectedSha) ?? commits[0] ?? null;
-  if (commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
+  if (fresh && commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
   return [commit, setSelectedSha] as const;
 }
 
@@ -60,11 +63,15 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
     queryFn: () => listCommits({ workspaceId }),
   });
   const commitList = commits.data?.commits ?? NO_COMMITS;
-  const [commit, selectCommit] = usePinnedCommit(commitList);
+  const [commit, selectCommit] = usePinnedCommit(commitList, commits.isFetchedAfterMount);
 
   const review = useReviewComments(workspaceId);
-  const reachability = useReachability(workspaceId, commitList[0]?.sha ?? null, review.comments);
-  const { sendable, stale } = splitSendable(review.comments, reachability);
+  const { reachability, error: reachabilityError } = useReachability(
+    workspaceId,
+    commitList[0]?.sha ?? null,
+    review.comments,
+  );
+  const { sendable, stale, pending } = splitSendable(review.comments, reachability);
 
   let body: React.ReactNode;
   if (commits.isPending) {
@@ -108,7 +115,10 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
         stale={stale}
         palette={palette}
         padding={props.padding}
+        pendingCount={pending.length}
+        reachabilityError={reachabilityError}
         onRemove={review.remove}
+        onRemoveSent={review.removeAsync}
       />
     </>
   );

@@ -27,14 +27,19 @@ describe("splitSendable", () => {
   it("sends comments on reachable commits, sets aside those the daemon ruled out, and waits on the rest", () => {
     const comments = [comment("1", A), comment("2", B), comment("3", A), comment("4", C)];
 
-    const { sendable, stale } = splitSendable(comments, { checked: new Set([A, B]), reachable: new Set([A]) });
+    const { sendable, stale, pending } = splitSendable(comments, {
+      head: A,
+      checked: new Set([A, B]),
+      reachable: new Set([A]),
+    });
 
     expect(sendable.map((c) => c.id)).toEqual(["1", "3"]);
     expect(stale.map((c) => c.id)).toEqual(["2"]);
+    expect(pending.map((c) => c.id)).toEqual(["4"]);
   });
 
   it("sends and discards nothing before the daemon has answered", () => {
-    expect(splitSendable([comment("1", A)], null)).toEqual({ sendable: [], stale: [] });
+    expect(splitSendable([comment("1", A)], null)).toMatchObject({ sendable: [], stale: [] });
   });
 });
 

@@ -42,7 +42,13 @@ export function useReviewComments(workspaceId: string) {
   });
   const remove = useMutation({ mutationFn: (ids: string[]) => removeComments({ workspaceId, ids }), onSuccess, onError });
 
-  return { comments: query.data?.comments ?? NO_COMMENTS, add: add.mutate, update: update.mutate, remove: remove.mutateAsync };
+  return {
+    comments: query.data?.comments ?? NO_COMMENTS,
+    add: add.mutate,
+    update: update.mutate,
+    remove: remove.mutate,
+    removeAsync: remove.mutateAsync,
+  };
 }
 
 export type ReviewCommentActions = Pick<ReturnType<typeof useReviewComments>, "add" | "update" | "remove">;
