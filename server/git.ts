@@ -15,18 +15,35 @@ const STABLE_OUTPUT_CONFIG = [
   "diff.suppressBlankEmpty=false",
 ];
 
-export async function git(cwd: string, args: readonly string[]): Promise<string> {
+export async function git(cwd: string, args: readonly string[], input = ""): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, ...STABLE_OUTPUT_CONFIG, ...args], {
+    const run = execFileAsync("git", ["-C", cwd, ...STABLE_OUTPUT_CONFIG, ...args], {
       maxBuffer: MAX_OUTPUT_BYTES,
       encoding: "utf8",
     });
+    run.child.stdin?.end(input);
+    const { stdout } = await run;
     return stdout;
   } catch (error) {
-    // Show git's own message, not the full command line.
-    const stderr = (error as { stderr?: string }).stderr?.trim();
-    throw new Error(stderr || (error instanceof Error ? error.message : String(error)));
+    throw gitError(error);
   }
+}
+
+// For commands like `merge-base --is-ancestor` that answer "no" with exit status 1.
+export async function gitSucceeds(cwd: string, args: readonly string[]): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["-C", cwd, ...STABLE_OUTPUT_CONFIG, ...args]);
+    return true;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 1) return false;
+    throw gitError(error);
+  }
+}
+
+function gitError(error: unknown): Error {
+  // Show git's own message, not the full command line.
+  const stderr = (error as { stderr?: string }).stderr?.trim();
+  return new Error(stderr || (error instanceof Error ? error.message : String(error)));
 }
 
 // Returns null when the path does not exist at that revision.

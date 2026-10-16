@@ -1,5 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { listCommits } from "./commits";
+import { listCommits, reachableCommits } from "./commits";
 import { useTestRepo } from "./test-repo";
 
 const repo = useTestRepo();
@@ -51,5 +52,35 @@ describe("listCommits", () => {
     const { commits } = await listCommits({ cwd: repo.cwd });
 
     expect(commits[0]).toMatchObject({ subject: "Merge topic", filesChanged: 1, additions: 1 });
+  });
+});
+
+describe("reachableCommits", () => {
+  it("drops a commit that was amended", async () => {
+    const original = repo.commit("Initial", { "a.txt": "a\n" });
+    repo.run("commit", "-q", "--amend", "-m", "Amended");
+    const amended = repo.run("rev-parse", "HEAD");
+
+    expect(await reachableCommits({ cwd: repo.cwd, shas: [original, amended] })).toEqual({ shas: [amended] });
+  });
+
+  it("keeps a commit older than the listed ones", async () => {
+    const old = repo.commit("Old", { "a.txt": "a\n" });
+    const branch = repo.run("symbolic-ref", "HEAD");
+    const commits = Array.from(
+      { length: 100 },
+      (_, index) => `commit ${branch}\ncommitter Test <test@example.com> 0 +0000\ndata 1\n${index % 10}\n${index === 0 ? `from ${old}\n` : ""}`,
+    );
+    execFileSync("git", ["-C", repo.cwd, "fast-import", "--quiet"], { input: commits.join("") });
+
+    expect((await listCommits({ cwd: repo.cwd })).commits.map((c) => c.sha)).not.toContain(old);
+    expect(await reachableCommits({ cwd: repo.cwd, shas: [old] })).toEqual({ shas: [old] });
+  });
+
+  it("finds none when HEAD has no commits", async () => {
+    const sha = repo.commit("Initial", { "a.txt": "a\n" });
+    repo.run("checkout", "-q", "--orphan", "fresh");
+
+    expect(await reachableCommits({ cwd: repo.cwd, shas: [sha] })).toEqual({ shas: [] });
   });
 });

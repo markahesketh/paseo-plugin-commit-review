@@ -1,5 +1,5 @@
 import type { CommitSummary } from "../shared/review";
-import { git } from "./git";
+import { git, gitSucceeds } from "./git";
 
 const LIMIT = 100;
 const RECORD = "\x1e";
@@ -57,4 +57,31 @@ export async function listCommits({ cwd }: { cwd: string }): Promise<{ commits: 
       baseRef: `${firstParent ?? emptyTree}..${commit.sha}`,
     })),
   };
+}
+
+export async function reachableCommits({
+  cwd,
+  shas,
+}: {
+  cwd: string;
+  shas: readonly string[];
+}): Promise<{ shas: string[] }> {
+  // A SHA that no longer resolves (an amended commit after gc) is unreachable, not an error.
+  const input = ["HEAD", ...shas].map((rev) => `${rev}^{commit}\n`).join("");
+  const [head, ...commits] = (await git(cwd, ["cat-file", "--batch-check=%(objectname)"], input)).split("\n");
+  if (!isObjectName(head)) return { shas: [] };
+  const reachable: string[] = [];
+  // One at a time: merge-base walks by generation number, so it stays correct
+  // when commit dates are skewed, which a single rev-list walk does not.
+  for (const [index, sha] of shas.entries()) {
+    const commit = commits[index];
+    if (isObjectName(commit) && (await gitSucceeds(cwd, ["merge-base", "--is-ancestor", commit, head]))) {
+      reachable.push(sha);
+    }
+  }
+  return { shas: reachable };
+}
+
+function isObjectName(value: string): boolean {
+  return /^[0-9a-f]+$/.test(value);
 }
