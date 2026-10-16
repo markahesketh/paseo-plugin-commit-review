@@ -28,7 +28,20 @@ export function useTestRepo() {
       // User config like this must not change what the plugin parses.
       repo.run("config", "diff.noprefix", "true");
       repo.run("config", "color.ui", "always");
+      repo.run("config", "color.diff", "always");
       repo.run("config", "diff.suppressBlankEmpty", "true");
+      repo.run("config", "diff.relative", "true");
+      repo.run("config", "log.showRoot", "false");
+      repo.run("config", "diff.submodule", "log");
+      repo.run("config", "diff.ignoreSubmodules", "all");
+      repo.run("config", "diff.renames", "copies");
+      // Signed commits, so log.showSignature has a signature to print.
+      repo.run("config", "log.showSignature", "true");
+      const key = join(repo.cwd, ".git", "signing-key");
+      execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key]);
+      repo.run("config", "gpg.format", "ssh");
+      repo.run("config", "user.signingKey", key);
+      repo.run("config", "commit.gpgSign", "true");
     },
   };
 

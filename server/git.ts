@@ -7,13 +7,17 @@ const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 // Overrides user and repo config that changes the output the plugin parses.
 const STABLE_OUTPUT_CONFIG = [
-  "-c",
   "core.quotePath=false",
-  "-c",
   "color.ui=false",
-  "-c",
+  "color.diff=false",
   "diff.suppressBlankEmpty=false",
-];
+  "diff.relative=false",
+  "diff.renames=true",
+  "diff.submodule=short",
+  "diff.ignoreSubmodules=none",
+  "log.showRoot=true",
+  "log.showSignature=false",
+].flatMap((setting) => ["-c", setting]);
 
 export async function git(cwd: string, args: readonly string[], input = ""): Promise<string> {
   try {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listCommits, reachableCommits } from "./commits";
@@ -16,6 +16,25 @@ describe("listCommits", () => {
 
     expect(commits.map((c) => c.subject)).toEqual(["Change a", "Initial"]);
     expect(commits[0]).toMatchObject({ sha, filesChanged: 1, additions: 2, deletions: 1, authorName: "Test" });
+    expect(commits[1]).toMatchObject({ filesChanged: 1, additions: 2, deletions: 0 });
+  });
+
+  it("counts a copied file's lines as added, like its diff", async () => {
+    repo.commit("Initial", { "a.txt": "one\ntwo\nthree\n" });
+    repo.commit("Copy", { "a.txt": "one\ntwo\nthree\nfour\n", "b.txt": "one\ntwo\nthree\n" });
+
+    const { commits } = await listCommits({ cwd: repo.cwd });
+
+    expect(commits[0]).toMatchObject({ filesChanged: 2, additions: 4 });
+  });
+
+  it("counts files outside the subdirectory it runs from", async () => {
+    mkdirSync(join(repo.cwd, "sub"));
+    repo.commit("Both", { "a.txt": "a\n", "sub/b.txt": "b\n" });
+
+    const { commits } = await listCommits({ cwd: join(repo.cwd, "sub") });
+
+    expect(commits[0]).toMatchObject({ filesChanged: 2, additions: 2 });
   });
 
   it("gives each commit the range from its first parent, or from the empty tree for the root", async () => {

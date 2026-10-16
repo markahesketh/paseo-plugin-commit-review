@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DiffFile } from "../shared/review";
@@ -85,6 +85,27 @@ describe("getCommitDiff", () => {
     expect(byPath["image.bin"]).toMatchObject({ status: "binary" });
     expect(byPath["image.bin"]).not.toHaveProperty("hunks");
     expect(deleted.files[0]).toMatchObject({ path: "gone.txt", change: "deleted", deletions: 1 });
+  });
+
+  it("shows files outside the subdirectory it runs from", async () => {
+    mkdirSync(join(repo.cwd, "sub"));
+    const sha = repo.commit("Both", { "a.txt": "a\n", "sub/b.txt": "b\n" });
+
+    const { files } = await getCommitDiff({ cwd: join(repo.cwd, "sub"), sha });
+
+    expect(files.map((f) => f.path)).toEqual(["a.txt", "sub/b.txt"]);
+  });
+
+  it("shows a changed submodule as a file", async () => {
+    const target = repo.commit("Initial", { "a.txt": "a\n" });
+    repo.run("update-index", "--add", "--cacheinfo", `160000,${target},vendor`);
+    repo.run("-c", "diff.ignoreSubmodules=none", "commit", "-q", "-m", "Add submodule");
+    const sha = repo.run("rev-parse", "HEAD");
+
+    const { files } = await getCommitDiff({ cwd: repo.cwd, sha });
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ path: "vendor", change: "added", additions: 1 });
   });
 
   it("works on the root commit", async () => {
