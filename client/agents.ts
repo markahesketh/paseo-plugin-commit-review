@@ -1,29 +1,37 @@
 import { usePaseo } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
+import { reviewQueryKey } from "./queries";
 
-export interface WorkspaceAgent {
-  id: string;
-  title: string | null;
-  provider: string;
-  status: string;
-}
+type AgentList = Awaited<ReturnType<ReturnType<typeof usePaseo>["agents"]["list"]>>;
+type Agent = AgentList["entries"][number]["agent"];
+export type WorkspaceAgent = Pick<Agent, "id" | "title" | "provider" | "status">;
 
-const AGENT_PAGE_LIMIT = 200;
+const OPEN_STATUSES: Agent["status"][] = ["initializing", "idle", "running", "error"];
+const PAGE_LIMIT = 200;
 
-// The workspace's live agents, most recently updated first.
+// The workspace's open agents, most recently updated first. The daemon cannot
+// filter by workspace, so every page is read until the list ends.
 export function useWorkspaceAgents(workspaceId: string) {
   const paseo = usePaseo();
   return useQuery({
-    queryKey: ["agents", workspaceId],
+    queryKey: reviewQueryKey(workspaceId, "agents"),
     queryFn: async (): Promise<WorkspaceAgent[]> => {
-      const { entries } = await paseo.agents.list({
-        sort: [{ key: "updated_at", direction: "desc" }],
-        page: { limit: AGENT_PAGE_LIMIT },
-      });
-      return entries
-        .map((entry) => entry.agent)
-        .filter((agent) => agent.workspaceId === workspaceId && !agent.archivedAt && agent.status !== "closed")
-        .map(({ id, title, provider, status }) => ({ id, title, provider, status }));
+      const agents: WorkspaceAgent[] = [];
+      let cursor: string | undefined;
+      do {
+        const { entries, pageInfo } = await paseo.agents.list({
+          filter: { statuses: OPEN_STATUSES, includeArchived: false },
+          sort: [{ key: "updated_at", direction: "desc" }],
+          page: { limit: PAGE_LIMIT, cursor },
+        });
+        for (const { agent } of entries) {
+          if (agent.workspaceId !== workspaceId) continue;
+          const { id, title, provider, status } = agent;
+          agents.push({ id, title, provider, status });
+        }
+        cursor = pageInfo.hasMore && pageInfo.nextCursor ? pageInfo.nextCursor : undefined;
+      } while (cursor);
+      return agents;
     },
   });
 }
