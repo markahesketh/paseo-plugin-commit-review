@@ -131,6 +131,50 @@ describe("getCommitDiff", () => {
     ]);
   });
 
+  it("hides a file with more than 5,000 changed lines", async () => {
+    const sha = repo.commit("Big", { "big.txt": "line\n".repeat(5_001), "small.txt": "a\n" });
+
+    const { files } = await getCommitDiff({ cwd: repo.cwd, sha });
+
+    expect(files.map((f) => [f.path, f.status, f.additions])).toEqual([
+      ["big.txt", "too_large", 5_001],
+      ["small.txt", "ok", 1],
+    ]);
+  });
+
+  it("hides files that do not fit in the commit's diff budget", async () => {
+    const quarterOfBudget = `${"x".repeat(99)}\n`.repeat(2_500);
+    const sha = repo.commit("Large", {
+      "a.txt": quarterOfBudget,
+      "b.txt": quarterOfBudget,
+      "c.txt": quarterOfBudget,
+      "d.txt": quarterOfBudget + quarterOfBudget,
+      "e.txt": "small\n",
+    });
+
+    const { files } = await getCommitDiff({ cwd: repo.cwd, sha });
+
+    expect(files.map((f) => [f.path, f.status, f.additions])).toEqual([
+      ["a.txt", "ok", 2_500],
+      ["b.txt", "ok", 2_500],
+      ["c.txt", "ok", 2_500],
+      ["d.txt", "too_large", 5_000],
+      ["e.txt", "ok", 1],
+    ]);
+  });
+
+  it("highlights files until the commit's highlight budget is spent", { timeout: 20_000 }, async () => {
+    // Old and new documents of about 600 kB each: a fits in the budget, b no longer does.
+    const document = (name: string, value: number) => `const ${name} = 1;\n`.repeat(46_000) + `${name}(${value});\n`;
+    repo.commit("Initial", { "a.ts": document("a", 1), "b.ts": document("b", 1), "c.ts": "const c = 1;\n" });
+    const sha = repo.commit("Change", { "a.ts": document("a", 2), "b.ts": document("b", 2), "c.ts": "const c = 2;\n" });
+
+    const { files } = await getCommitDiff({ cwd: repo.cwd, sha });
+
+    const addedTokens = files.map((f) => hunksOf(f)[0].lines.find((l) => l.type === "add")?.tokens ?? null);
+    expect(addedTokens.map((tokens) => tokens !== null)).toEqual([true, false, true]);
+  });
+
   it("works on the root commit", async () => {
     const sha = repo.commit("Initial", { "a.py": "def f():\n    return 1\n" });
 
