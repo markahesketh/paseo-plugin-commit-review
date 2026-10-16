@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DiffFile } from "../shared/review";
@@ -115,6 +115,20 @@ describe("getCommitDiff", () => {
 
     expect(files).toHaveLength(1);
     expect(files[0]).toMatchObject({ path: "vendor", change: "added", additions: 1 });
+  });
+
+  it("reads binary and mode-only paths that contain \" b/\"", async () => {
+    mkdirSync(join(repo.cwd, "a b"));
+    repo.commit("Initial", { "a b/run.sh": "echo\n" });
+    chmodSync(join(repo.cwd, "a b/run.sh"), 0o755);
+    const sha = repo.commit("Binary and mode", { "a b/c.bin": Buffer.from([0, 1, 2, 0]) });
+
+    const { files } = await getCommitDiff({ cwd: repo.cwd, sha });
+
+    expect(files.map((f) => [f.path, f.status])).toEqual([
+      ["a b/c.bin", "binary"],
+      ["a b/run.sh", "ok"],
+    ]);
   });
 
   it("works on the root commit", async () => {

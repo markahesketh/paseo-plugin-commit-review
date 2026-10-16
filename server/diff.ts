@@ -47,9 +47,13 @@ function metadataPath(lines: readonly string[], marker: "--- " | "+++ "): string
   return stripPrefix(path, marker === "--- " ? "a/" : "b/");
 }
 
-function headerPaths(firstLine: string): { oldPath: string; newPath: string } | null {
-  const match = firstLine.match(/^("?a\/.+"?) ("?b\/.+"?)$/);
-  return match ? { oldPath: stripPrefix(match[1], "a/"), newPath: stripPrefix(match[2], "b/") } : null;
+// The `diff --git a/X b/Y` line is ambiguous when a path contains " b/". Only
+// files without ---/+++ or rename lines need it, and those keep their path, so
+// X and Y are the same and the line splits into two halves of equal length.
+function headerPath(firstLine: string): string | null {
+  const half = (firstLine.length - 1) / 2;
+  const oldPath = stripPrefix(firstLine.slice(0, half), "a/");
+  return firstLine[half] === " " && oldPath === stripPrefix(firstLine.slice(half + 1), "b/") ? oldPath : null;
 }
 
 function prefixedValue(lines: readonly string[], prefix: string): string | null {
@@ -59,13 +63,13 @@ function prefixedValue(lines: readonly string[], prefix: string): string | null 
 
 function parseSection(section: string): DiffFile {
   const lines = section.split("\n");
-  const header = headerPaths(lines[0] ?? "");
+  const header = headerPath(lines[0] ?? "");
   const renameFrom = prefixedValue(lines, "rename from ");
   const renameTo = prefixedValue(lines, "rename to ");
   const isNew = lines.some((line) => line.startsWith("new file mode"));
   const isDeleted = lines.some((line) => line.startsWith("deleted file mode"));
-  const oldPath = renameFrom ?? metadataPath(lines, "--- ") ?? header?.oldPath ?? null;
-  const newPath = renameTo ?? metadataPath(lines, "+++ ") ?? header?.newPath ?? null;
+  const oldPath = renameFrom ?? metadataPath(lines, "--- ") ?? header;
+  const newPath = renameTo ?? metadataPath(lines, "+++ ") ?? header;
   const path = (isDeleted ? oldPath : newPath) ?? oldPath ?? "unknown";
   const change: DiffFile["change"] = isNew ? "added" : isDeleted ? "deleted" : renameFrom ? "renamed" : "modified";
   const binary = lines.some((line) => line.startsWith("Binary files ") || line === "GIT binary patch");
