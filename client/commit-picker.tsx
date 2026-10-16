@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
 import type { CommitSummary } from "../shared/review";
+import { countComments } from "./comments";
 import { MONO_FONT, type DiffPalette } from "./palette";
 import { PickerModal } from "./picker-modal";
 
@@ -35,7 +36,7 @@ export function CommitSummaryLine(props: {
         <Text style={{ color: palette.addition }}>{`+${commit.additions}`}</Text>
         {" "}
         <Text style={{ color: palette.deletion }}>{`-${commit.deletions}`}</Text>
-        {props.commentCount ? ` · ${props.commentCount} comment${props.commentCount === 1 ? "" : "s"}` : ""}
+        {props.commentCount ? ` · ${countComments(props.commentCount)}` : ""}
       </Text>
     </View>
   );

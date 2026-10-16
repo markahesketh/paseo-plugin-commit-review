@@ -1,6 +1,11 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { PluginAgentCommandContext, PluginClientContext } from "@getpaseo/plugin/client";
 import { CommitReviewPanel } from "./client/commit-review-panel";
 import { preferAgent } from "./client/target-agent";
+
+function openForAgent({ workspace, agent, openPanel }: PluginAgentCommandContext) {
+  preferAgent(workspace.id, agent.id);
+  openPanel("commit-review", { location: "explorer" });
+}
 
 export default function contribute(client: PluginClientContext) {
   client.addWorkspacePanel({
@@ -19,20 +24,14 @@ export default function contribute(client: PluginClientContext) {
     icon: "GitCommitHorizontal",
     keywords: ["commit", "review", "diff", "comment"],
     context: "agent",
-    onSelect({ workspace, agent, openPanel }) {
-      preferAgent(workspace.id, agent.id);
-      openPanel("commit-review", { location: "explorer" });
-    },
+    onSelect: openForAgent,
   });
   client.addSlashCommand({
     name: "review-commit",
     description: "Review a single commit and send comments to this agent",
     argumentHint: "",
     context: "agent",
-    onSubmit({ workspace, agent, openPanel }) {
-      preferAgent(workspace.id, agent.id);
-      openPanel("commit-review", { location: "explorer" });
-    },
+    onSubmit: openForAgent,
   });
   return () => {};
 }
