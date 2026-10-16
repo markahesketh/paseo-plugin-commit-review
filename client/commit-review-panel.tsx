@@ -37,8 +37,11 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
   });
   const commitList = commits.data?.commits ?? NO_COMMITS;
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
-  // A selected commit that leaves the list (amend, rebase) falls back to the newest.
   const commit = commitList.find((candidate) => candidate.sha === selectedSha) ?? commitList[0] ?? null;
+  // Pin the newest commit as soon as commits load, so a refetch after an agent
+  // commits keeps the commit under review instead of jumping to the new HEAD.
+  // Only a selected commit that leaves the list (amend, rebase) falls back.
+  if (commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
 
   const review = useReviewComments(workspaceId);
   const listedShas = useMemo(() => new Set(commitList.map((candidate) => candidate.sha)), [commitList]);
