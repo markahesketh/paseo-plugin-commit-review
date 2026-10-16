@@ -21,14 +21,20 @@ function comment(id: string, sha: string): ReviewComment {
   };
 }
 
-describe("splitSendable", () => {
-  it("keeps comments on reachable commits and sets the rest aside in order", () => {
-    const comments = [comment("1", A), comment("2", B), comment("3", A)];
+const C = "c".repeat(40);
 
-    const { sendable, stale } = splitSendable(comments, new Set([A]));
+describe("splitSendable", () => {
+  it("sends comments on reachable commits, sets aside those the daemon ruled out, and waits on the rest", () => {
+    const comments = [comment("1", A), comment("2", B), comment("3", A), comment("4", C)];
+
+    const { sendable, stale } = splitSendable(comments, { checked: new Set([A, B]), reachable: new Set([A]) });
 
     expect(sendable.map((c) => c.id)).toEqual(["1", "3"]);
     expect(stale.map((c) => c.id)).toEqual(["2"]);
+  });
+
+  it("sends and discards nothing before the daemon has answered", () => {
+    expect(splitSendable([comment("1", A)], null)).toEqual({ sendable: [], stale: [] });
   });
 });
 

@@ -1,10 +1,10 @@
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useRpc, useWorkspace } from "@getpaseo/plugin/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { listCommitsRpc, type CommitSummary } from "../shared/review";
-import { splitSendable } from "./comments";
+import { listCommitsRpc, reachableCommitsRpc, type CommitSummary, type ReviewComment } from "../shared/review";
+import { splitSendable, type Reachability } from "./comments";
 import { CommitDiff } from "./commit-diff";
 import { Notice } from "./controls";
 import { createDiffPalette, type DiffPalette } from "./palette";
@@ -27,6 +27,22 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
 
 const NO_COMMITS: CommitSummary[] = [];
 
+// Asked again whenever HEAD moves or the set of commented commits changes.
+function useReachability(workspaceId: string, headSha: string | null, comments: readonly ReviewComment[]) {
+  const reachableCommits = useRpc(reachableCommitsRpc);
+  const shas = useMemo(() => [...new Set(comments.map((comment) => comment.sha))].sort(), [comments]);
+  const query = useQuery({
+    queryKey: reviewQueryKey(workspaceId, "reachable", headSha, shas),
+    queryFn: async (): Promise<Reachability> => ({
+      checked: new Set(shas),
+      reachable: new Set((await reachableCommits({ workspaceId, shas })).shas),
+    }),
+    enabled: headSha !== null && shas.length > 0,
+    placeholderData: keepPreviousData,
+  });
+  return query.data ?? null;
+}
+
 function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPalette; padding: number }) {
   const { workspaceId, palette } = props;
   const queryClient = useQueryClient();
@@ -44,8 +60,8 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
   if (commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
 
   const review = useReviewComments(workspaceId);
-  const listedShas = useMemo(() => new Set(commitList.map((candidate) => candidate.sha)), [commitList]);
-  const { sendable, stale } = splitSendable(review.comments, listedShas);
+  const reachability = useReachability(workspaceId, commitList[0]?.sha ?? null, review.comments);
+  const { sendable, stale } = splitSendable(review.comments, reachability);
 
   let body: React.ReactNode;
   if (commits.isPending) {
