@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listCommits, reachableCommits } from "./commits";
 import { useTestRepo } from "./test-repo";
@@ -35,6 +37,17 @@ describe("listCommits", () => {
       [topic]: `${root}..${topic}`,
       [root]: `${emptyTree}..${root}`,
     });
+  });
+
+  it("hashes the empty tree for the repository's object format", async () => {
+    rmSync(join(repo.cwd, ".git"), { recursive: true });
+    repo.init("--object-format=sha256");
+    const root = repo.commit("Initial", { "a.txt": "a\n" });
+    const emptyTree = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
+
+    const { commits } = await listCommits({ cwd: repo.cwd });
+
+    expect(commits[0].baseRef).toBe(`${emptyTree}..${root}`);
   });
 
   it("lists no commits in a repository without any", async () => {
