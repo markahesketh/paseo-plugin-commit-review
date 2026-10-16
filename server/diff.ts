@@ -67,7 +67,7 @@ function parseSection(section: string): DiffFile {
   const oldPath = renameFrom ?? metadataPath(lines, "--- ") ?? header?.oldPath ?? null;
   const newPath = renameTo ?? metadataPath(lines, "+++ ") ?? header?.newPath ?? null;
   const path = (isDeleted ? oldPath : newPath) ?? oldPath ?? "unknown";
-  const change = isNew ? "added" : isDeleted ? "deleted" : renameFrom ? "renamed" : "modified";
+  const change: DiffFile["change"] = isNew ? "added" : isDeleted ? "deleted" : renameFrom ? "renamed" : "modified";
   const binary = lines.some((line) => line.startsWith("Binary files ") || line === "GIT binary patch");
 
   const hunks: DiffHunk[] = [];
@@ -105,16 +105,10 @@ function parseSection(section: string): DiffFile {
     }
   }
 
-  const status = binary ? "binary" : lineCount > MAX_FILE_DIFF_LINES ? "too_large" : "ok";
-  return {
-    path,
-    oldPath: change === "renamed" ? oldPath : null,
-    change,
-    additions,
-    deletions,
-    status,
-    hunks: status === "ok" ? hunks : [],
-  };
+  const base = { path, oldPath: change === "renamed" ? oldPath : null, change, additions, deletions };
+  if (binary) return { ...base, status: "binary" };
+  if (lineCount > MAX_FILE_DIFF_LINES) return { ...base, status: "too_large" };
+  return { ...base, status: "ok", hunks };
 }
 
 export function parseUnifiedDiff(diff: string): DiffFile[] {

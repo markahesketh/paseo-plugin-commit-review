@@ -27,6 +27,7 @@ const DIGIT_WIDTH = CODE_FONT_SIZE * 0.62;
 export function gutterWidth(files: readonly DiffFile[]): number {
   let max = 1;
   for (const file of files) {
+    if (file.status !== "ok") continue;
     for (const hunk of file.hunks) {
       for (const line of hunk.lines) {
         max = Math.max(max, line.oldLineNumber ?? 0, line.newLineNumber ?? 0);

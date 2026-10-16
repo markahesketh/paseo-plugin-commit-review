@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DiffFile } from "../shared/review";
 import { listCommits } from "./commits";
 import { getCommitDiff } from "./diff";
 
@@ -36,6 +37,11 @@ beforeEach(() => {
 
 afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 
+function hunksOf(file: DiffFile) {
+  if (file.status !== "ok") throw new Error(`${file.path} is ${file.status}`);
+  return file.hunks;
+}
+
 describe("listCommits", () => {
   it("lists commits newest first with their stats", async () => {
     commit("Initial", { "a.ts": "one\ntwo\n" });
@@ -45,6 +51,31 @@ describe("listCommits", () => {
 
     expect(commits.map((c) => c.subject)).toEqual(["Change a", "Initial"]);
     expect(commits[0]).toMatchObject({ sha, filesChanged: 1, additions: 2, deletions: 1, authorName: "Test" });
+  });
+
+  it("gives each commit the range from its first parent, or from the empty tree for the root", async () => {
+    const root = commit("Initial", { "a.txt": "a\n" });
+    run("checkout", "-q", "-b", "topic");
+    const topic = commit("Topic", { "b.txt": "b\n" });
+    run("checkout", "-q", "-");
+    const main = commit("Main", { "c.txt": "c\n" });
+    run("merge", "-q", "--no-ff", "-m", "Merge topic", "topic");
+    const merge = run("rev-parse", "HEAD");
+    const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+    const { commits } = await listCommits({ cwd });
+
+    const baseRefs = Object.fromEntries(commits.map((c) => [c.sha, c.baseRef]));
+    expect(baseRefs).toEqual({
+      [merge]: `${main}..${merge}`,
+      [main]: `${root}..${main}`,
+      [topic]: `${root}..${topic}`,
+      [root]: `${emptyTree}..${root}`,
+    });
+  });
+
+  it("lists no commits in a repository without any", async () => {
+    expect(await listCommits({ cwd })).toEqual({ commits: [] });
   });
 
   it("gives merge commits their first-parent stats", async () => {
@@ -70,7 +101,7 @@ describe("getCommitDiff", () => {
     const { files } = await getCommitDiff({ cwd, sha });
 
     expect(files.map((f) => f.path)).toEqual(["a.ts"]);
-    const lines = files[0].hunks[0].lines;
+    const lines = hunksOf(files[0])[0].lines;
     expect(lines.map((l) => [l.type, l.oldLineNumber, l.newLineNumber, l.content])).toEqual([
       ["context", 1, 1, "const a = 1;"],
       ["remove", 2, null, "const b = 2;"],
@@ -85,7 +116,7 @@ describe("getCommitDiff", () => {
 
     const { files } = await getCommitDiff({ cwd, sha });
 
-    const added = files[0].hunks[0].lines.find((l) => l.type === "add");
+    const added = hunksOf(files[0])[0].lines.find((l) => l.type === "add");
     expect(added).toMatchObject({ newLineNumber: 4, content: "const c = 4;" });
   });
 
@@ -96,7 +127,7 @@ describe("getCommitDiff", () => {
     const { files } = await getCommitDiff({ cwd, sha });
 
     expect(files[0].path).toBe(name);
-    expect(files[0].hunks[0].lines[0].tokens).not.toBeNull();
+    expect(hunksOf(files[0])[0].lines[0].tokens).not.toBeNull();
   });
 
   it("never passes the SHA to git as an option", async () => {
@@ -114,7 +145,7 @@ describe("getCommitDiff", () => {
 
     const { files } = await getCommitDiff({ cwd, sha });
 
-    const added = files[0].hunks[0].lines.find((l) => l.type === "add");
+    const added = hunksOf(files[0])[0].lines.find((l) => l.type === "add");
     expect(added?.tokens?.[0]?.style).toBe("comment");
   });
 
@@ -131,7 +162,8 @@ describe("getCommitDiff", () => {
     const byPath = Object.fromEntries(mixed.files.map((f) => [f.path, f]));
     expect(byPath["new.txt"]).toMatchObject({ change: "added", additions: 1 });
     expect(byPath["new-name.txt"]).toMatchObject({ change: "renamed", oldPath: "old-name.txt" });
-    expect(byPath["image.bin"]).toMatchObject({ status: "binary", hunks: [] });
+    expect(byPath["image.bin"]).toMatchObject({ status: "binary" });
+    expect(byPath["image.bin"]).not.toHaveProperty("hunks");
     expect(deleted.files[0]).toMatchObject({ path: "gone.txt", change: "deleted", deletions: 1 });
   });
 

@@ -14,8 +14,8 @@ import {
 
 export default function contribute(server: PluginServerContext) {
   const comments = createCommentStore();
-  server.handle(listCommitsRpc, async ({ workspaceId, limit }, context) =>
-    listCommits({ cwd: await workspaceDirectory(context, workspaceId), limit }),
+  server.handle(listCommitsRpc, async ({ workspaceId }, context) =>
+    listCommits({ cwd: await workspaceDirectory(context, workspaceId) }),
   );
   server.handle(commitDiffRpc, async ({ workspaceId, sha }, context) =>
     getCommitDiff({ cwd: await workspaceDirectory(context, workspaceId), sha }),

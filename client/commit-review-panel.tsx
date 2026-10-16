@@ -28,7 +28,7 @@ import {
   gutterWidth,
 } from "./diff-rows";
 import { createDiffPalette } from "./palette";
-import { buildRows, reviewContext, targetKey, type DiffRow, type LineTarget } from "./rows";
+import { buildRows, targetKey, type DiffRow, type LineTarget } from "./rows";
 import { preferAgent, usePreferredAgent } from "./target-agent";
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
@@ -123,7 +123,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
         attachments: buildReviewAttachments({ cwd: cwd!, comments: sendable }),
         activeTurnBehavior: "steer",
       });
-      await removeComments({ ids: sendable.map((comment) => comment.id) });
+      await removeComments({ workspaceId, ids: sendable.map((comment) => comment.id) });
     },
     onSuccess: () => {
       setMessage("");
@@ -197,8 +197,8 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
               comment={item.comment}
               palette={palette}
               inset={gutter}
-              onUpdate={(id, body) => update({ id, body })}
-              onRemove={(id) => remove({ ids: [id] })}
+              onUpdate={(id, body) => update({ workspaceId, id, body })}
+              onRemove={(id) => remove({ workspaceId, ids: [id] })}
             />
           );
         case "editor":
@@ -217,10 +217,10 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
                 add({
                   workspaceId,
                   sha: commit.sha,
-                  shortSha: commit.shortSha,
+                  baseRef: commit.baseRef,
                   ...item.target,
                   body,
-                  ...reviewContext(item.hunk, item.lineIndex),
+                  context: item.context,
                 });
                 setEditing(null);
               }}
@@ -355,7 +355,7 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
               variant="secondary"
               palette={palette}
               onPress={() => {
-                remove({ ids: allComments.map((comment) => comment.id) });
+                remove({ workspaceId, ids: allComments.map((comment) => comment.id) });
               }}
             />
             <Pressable

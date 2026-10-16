@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
+import type { ReviewContextLine } from "../shared/review";
 import { createCommentStore } from "./comments";
 
+const targetLine: ReviewContextLine = { type: "add", content: "x", oldLineNumber: null, newLineNumber: 1 };
+const sha = "a".repeat(40);
+
 const draft = {
-  sha: "abc1234def",
-  shortSha: "abc1234",
+  sha,
+  baseRef: `${"b".repeat(40)}..${sha}`,
   filePath: "a.ts",
   side: "new" as const,
   lineNumber: 1,
   body: "Fix",
-  hunkHeader: "@@ -1 +1 @@",
-  targetIndex: 0,
-  contextLines: [],
+  context: { hunkHeader: "@@ -0,0 +1 @@", targetLine, lines: [targetLine] },
 };
 
 describe("comment store", () => {
@@ -20,10 +22,23 @@ describe("comment store", () => {
     const addedWhileSending = store.add({ ...draft, workspaceId: "a" }).comment;
     store.add({ ...draft, workspaceId: "b" });
 
-    store.remove({ ids: [sent.id] });
+    store.remove({ workspaceId: "a", ids: [sent.id] });
 
     expect(store.list({ workspaceId: "a" }).comments).toEqual([addedWhileSending]);
     expect(store.list({ workspaceId: "b" }).comments).toHaveLength(1);
+  });
+
+  it("does not update or remove a comment through another workspace", () => {
+    const store = createCommentStore();
+    const comment = store.add({ ...draft, workspaceId: "a" }).comment;
+
+    const updated = store.update({ workspaceId: "b", id: comment.id, body: "Changed" });
+    const removed = store.remove({ workspaceId: "b", ids: [comment.id] });
+
+    expect(updated.comment).toBeNull();
+    expect(removed.removed).toBe(0);
+    expect(store.list({ workspaceId: "a" }).comments).toEqual([comment]);
+    expect(store.update({ workspaceId: "a", id: comment.id, body: "Changed" }).comment?.body).toBe("Changed");
   });
 
   it("drops an archived workspace's comments", () => {
