@@ -15,7 +15,7 @@ const C_ESCAPES: Record<string, string> = { a: "\x07", b: "\b", t: "\t", n: "\n"
 
 // Git C-quotes paths with quotes, backslashes or control characters, even with
 // core.quotePath=false. Octal escapes are UTF-8 bytes.
-export function unquotePath(path: string): string {
+function unquotePath(path: string): string {
   if (!path.startsWith('"') || !path.endsWith('"')) return path;
   const bytes: number[] = [];
   const body = path.slice(1, -1);
