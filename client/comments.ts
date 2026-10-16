@@ -6,6 +6,10 @@ export interface Reachability {
   reachable: ReadonlySet<string>;
 }
 
+export function keepAnswerForHead(headSha: string | null) {
+  return (previous: Reachability | undefined) => (previous?.head === headSha ? previous : undefined);
+}
+
 export function splitSendable(comments: readonly ReviewComment[], reachability: Reachability | null) {
   const sendable: ReviewComment[] = [];
   const stale: ReviewComment[] = [];

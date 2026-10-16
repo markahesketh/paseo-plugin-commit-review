@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { listCommitsRpc, reachableCommitsRpc, type CommitSummary, type ReviewComment } from "../shared/review";
-import { splitSendable, type Reachability } from "./comments";
+import { keepAnswerForHead, splitSendable, type Reachability } from "./comments";
 import { CommitDiff } from "./commit-diff";
 import { Notice } from "./controls";
 import { createDiffPalette, type DiffPalette } from "./palette";
@@ -38,19 +38,17 @@ function useReachability(workspaceId: string, headSha: string | null, comments: 
       reachable: new Set((await reachableCommits({ workspaceId, shas })).shas),
     }),
     enabled: headSha !== null && shas.length > 0,
-    // An answer for an older HEAD would send or discard the wrong comments.
-    placeholderData: (previous) => (previous?.head === headSha ? previous : undefined),
+    placeholderData: keepAnswerForHead(headSha),
   });
   return { reachability: query.data ?? null, error: query.error };
 }
 
 // Stays on its commit when new commits land, and falls back to the newest only
 // when the commit leaves the list.
-// A list from the cache can be older than HEAD, so the pin waits for a fetch.
-function usePinnedCommit(commits: readonly CommitSummary[], fresh: boolean) {
+function usePinnedCommit(commits: readonly CommitSummary[], fetchedSinceMount: boolean) {
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const commit = commits.find((candidate) => candidate.sha === selectedSha) ?? commits[0] ?? null;
-  if (fresh && commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
+  if (fetchedSinceMount && commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
   return [commit, setSelectedSha] as const;
 }
 
@@ -118,7 +116,7 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
         pendingCount={pending.length}
         reachabilityError={reachabilityError}
         onRemove={review.remove}
-        onRemoveSent={review.removeAsync}
+        onClearSent={review.clearSent}
       />
     </>
   );

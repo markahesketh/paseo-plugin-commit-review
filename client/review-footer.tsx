@@ -24,7 +24,7 @@ export function ReviewFooter(props: {
   pendingCount: number;
   reachabilityError: Error | null;
   onRemove(ids: string[]): void;
-  onRemoveSent(ids: string[]): Promise<unknown>;
+  onClearSent(ids: string[]): Promise<void>;
 }) {
   const { workspaceId, palette, sendable, stale } = props;
   const paseo = usePaseo();
@@ -45,8 +45,7 @@ export function ReviewFooter(props: {
         attachments: buildReviewAttachments({ cwd: props.cwd, comments: sendable }),
         activeTurnBehavior: "steer",
       });
-      // The review is sent even if clearing its drafts fails; that error has its own toast.
-      await props.onRemoveSent(sendable.map((comment) => comment.id)).catch(() => {});
+      await props.onClearSent(sendable.map((comment) => comment.id));
     },
     onSuccess: () => {
       setMessage("");

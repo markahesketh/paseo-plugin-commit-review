@@ -47,7 +47,10 @@ export function useReviewComments(workspaceId: string) {
     add: add.mutate,
     update: update.mutate,
     remove: remove.mutate,
-    removeAsync: remove.mutateAsync,
+    clearSent: (ids: string[]) => remove.mutateAsync(ids).then(
+      () => undefined,
+      () => undefined,
+    ),
   };
 }
 
