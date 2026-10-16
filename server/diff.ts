@@ -5,9 +5,6 @@ import { blobSizes, gitLines, readBlobs } from "./git";
 const MAX_FILE_DIFF_LINES = 5_000;
 const MAX_HIGHLIGHT_LINE_CHARS = 10_000;
 const MAX_HIGHLIGHT_FILE_BYTES = 1_000_000;
-// Budgets across the whole commit, so a large commit gets a response of bounded
-// size and bounded highlighting work. Files past the diff budget are hidden like
-// any too-large file; files past the highlight budget are shown without tokens.
 const MAX_COMMIT_DIFF_CHARS = 1_000_000;
 const MAX_COMMIT_HIGHLIGHT_BYTES = 2_000_000;
 
@@ -67,10 +64,8 @@ function prefixedValue(lines: readonly string[], prefix: string): string | null 
 }
 
 interface Section {
-  // The `diff --git` line without its prefix, then the metadata lines before the first hunk.
   header: string[];
   inHunks: boolean;
-  // Null once the file is past its own limit or the commit's budget.
   hunks: DiffHunk[] | null;
   oldLine: number;
   newLine: number;
@@ -170,8 +165,6 @@ async function parseDiff(lines: AsyncIterable<string>): Promise<ParsedFile[]> {
   return files;
 }
 
-// Reads whole old and new documents for highlighting, in diff order, until the
-// commit's highlight budget is spent. Files after that are shown without tokens.
 async function readDocuments(cwd: string, files: readonly ParsedFile[]): Promise<Map<string, string>> {
   const highlightable = files.filter(({ file }) => file.status === "ok" && isLanguageSupported(file.path));
   const blobsOf = ({ oldBlob, newBlob }: ParsedFile) =>

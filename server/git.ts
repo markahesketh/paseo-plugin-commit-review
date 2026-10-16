@@ -38,7 +38,6 @@ async function gitBuffer(cwd: string, args: readonly string[], input: string): P
   }
 }
 
-// For commands like `merge-base --is-ancestor` that answer "no" with exit status 1.
 export async function gitSucceeds(cwd: string, args: readonly string[]): Promise<boolean> {
   try {
     await execFileAsync("git", ["-C", cwd, ...STABLE_OUTPUT_CONFIG, ...args]);
@@ -50,12 +49,10 @@ export async function gitSucceeds(cwd: string, args: readonly string[]): Promise
 }
 
 function gitError(error: unknown): Error {
-  // Show git's own message, not the full command line.
   const stderr = String((error as { stderr?: unknown }).stderr ?? "").trim();
   return new Error(stderr || (error instanceof Error ? error.message : String(error)));
 }
 
-// Streams stdout line by line, so output of any size is read without holding it all.
 export async function* gitLines(cwd: string, args: readonly string[]): AsyncGenerator<string> {
   const child = spawn("git", ["-C", cwd, ...STABLE_OUTPUT_CONFIG, ...args], { stdio: ["ignore", "pipe", "pipe"] });
   const stderr: Buffer[] = [];

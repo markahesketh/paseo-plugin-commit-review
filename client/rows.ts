@@ -26,8 +26,6 @@ export type DiffRow =
   | { kind: "new-comment"; key: string; editor: Extract<Editor, { kind: "new" }>; context: ReviewCommentContext }
   | { kind: "edit-comment"; key: string; editor: Extract<Editor, { kind: "edit" }>; comment: ReviewComment };
 
-// The text typed into one editor. It lives above the list rows so it survives
-// virtualisation, and it names its editor so no other editor can read it.
 export interface Draft {
   editor: Editor;
   text: string;

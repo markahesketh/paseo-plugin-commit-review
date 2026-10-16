@@ -27,8 +27,7 @@ export function PickerModal<T>(props: {
       >
         <FlatList
           style={{ flex: 1, minHeight: 0 }}
-          // The host's FlatList types want a mutable array it never writes to.
-          data={props.items as T[]}
+          data={props.items}
           keyExtractor={props.keyOf}
           renderItem={({ item }: { item: T }) => {
             const key = props.keyOf(item);

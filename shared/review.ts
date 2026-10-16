@@ -42,11 +42,8 @@ export const DiffFileSchema = z.discriminatedUnion("status", [
   DiffFileBaseSchema.extend({ status: z.enum(["binary", "too_large"]) }),
 ]);
 
-// Full or abbreviated object names only, so a value can never reach git as an option.
 export const ShaSchema = z.string().regex(/^[0-9a-f]{4,64}$/, "Not a commit SHA");
 
-// `<base>..<sha>` with full object names. The base is the first parent, or the
-// empty tree for a root commit.
 export const BaseRefSchema = z.string().regex(/^[0-9a-f]{40,64}\.\.[0-9a-f]{40,64}$/, "Not a commit range");
 
 export const CommitSummarySchema = z.object({
@@ -63,12 +60,10 @@ export const CommitSummarySchema = z.object({
 
 export const ReviewSideSchema = z.enum(["old", "new"]);
 
-// Lines of diff on each side of the commented line that go to the agent.
 export const REVIEW_CONTEXT_RADIUS = 3;
 
 const CommentBodySchema = z.string().trim().min(1).max(20_000);
 
-// The shape of a comment in Paseo's review attachment.
 export const ReviewCommentContextSchema = z.object({
   hunkHeader: z.string(),
   targetLine: ReviewContextLineSchema,
@@ -112,8 +107,6 @@ export const commitDiffRpc = defineRpc({
   output: z.object({ files: z.array(DiffFileSchema) }),
 });
 
-// The given commits that are ancestors of HEAD. A comment on any other commit
-// (amended, rebased away, or on another branch) is not sent.
 export const reachableCommitsRpc = defineRpc({
   name: "commits.reachable",
   input: z.object({ workspaceId: z.string(), shas: z.array(ShaSchema).max(1_000) }),

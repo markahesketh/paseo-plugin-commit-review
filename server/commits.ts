@@ -66,7 +66,6 @@ export async function reachableCommits({
   cwd: string;
   shas: readonly string[];
 }): Promise<{ shas: string[] }> {
-  // A SHA that no longer resolves (an amended commit after gc) is unreachable, not an error.
   const input = ["HEAD", ...shas].map((rev) => `${rev}^{commit}\n`).join("");
   const [head, ...commits] = (await git(cwd, ["cat-file", "--batch-check=%(objectname)"], input)).split("\n");
   if (!isObjectName(head)) return { shas: [] };

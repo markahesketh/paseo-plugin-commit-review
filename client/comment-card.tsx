@@ -31,8 +31,7 @@ export function CommentEditor(props: {
   const submit = () => {
     if (!empty) props.onSubmit(body.trim());
   };
-  // Enter submits and Shift+Enter adds a new line. Soft keyboards have no
-  // Shift+Enter, so native platforms submit through the return key instead.
+  // Soft keyboards have no Shift+Enter, so native platforms submit through the return key instead.
   const onKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
     const { key, shiftKey, isComposing, keyCode } = event.nativeEvent as TextInputKeyPressEventData & {
       shiftKey?: boolean;

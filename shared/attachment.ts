@@ -1,8 +1,6 @@
 import type { ReviewComment, ReviewCommentContext, ReviewSide } from "./review";
 
-// Paseo's own review attachment. The daemon renders it into the prompt and the
-// chat shows it as the native Review pill. Paseo has no commit mode, so a
-// commit is a "base" review of the range `<parent>..<sha>`.
+// Paseo has no commit mode, so a commit is a "base" review of the range `<parent>..<sha>`.
 export interface ReviewAttachment {
   type: "review";
   mimeType: "application/paseo-review";

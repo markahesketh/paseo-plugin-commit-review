@@ -13,15 +13,20 @@ import { buildRows, draftText, editorKey, type DiffRow, type Draft, type Editor,
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
-// Rendered with `key={commit.sha}`, so every piece of state here starts fresh
-// for each commit.
-export function CommitDiff(props: {
+type CommitDiffProps = {
   workspaceId: string;
   commit: CommitSummary;
   comments: readonly ReviewComment[];
   actions: ReviewCommentActions;
   palette: DiffPalette;
-}) {
+};
+
+// A remount per commit resets collapse state, the editor and its draft.
+export function CommitDiff(props: CommitDiffProps) {
+  return <CommitDiffView key={props.commit.sha} {...props} />;
+}
+
+function CommitDiffView(props: CommitDiffProps) {
   const { workspaceId, commit, palette } = props;
   const { add, update, remove } = props.actions;
   const commitDiff = useRpc(commitDiffRpc);
@@ -50,8 +55,6 @@ export function CommitDiff(props: {
       return next;
     });
   }, []);
-  // Cancelling discards the draft, so every editor change drops it before the
-  // next render reads it.
   const changeEditor = useCallback((next: Editor | null) => {
     draft.current = null;
     setEditor(next);

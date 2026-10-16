@@ -164,7 +164,6 @@ describe("getCommitDiff", () => {
   });
 
   it("highlights files until the commit's highlight budget is spent", { timeout: 20_000 }, async () => {
-    // Old and new documents of about 600 kB each: a fits in the budget, b no longer does.
     const document = (name: string, value: number) => `const ${name} = 1;\n`.repeat(46_000) + `${name}(${value});\n`;
     repo.commit("Initial", { "a.ts": document("a", 1), "b.ts": document("b", 1), "c.ts": "const c = 1;\n" });
     const sha = repo.commit("Change", { "a.ts": document("a", 2), "b.ts": document("b", 2), "c.ts": "const c = 2;\n" });

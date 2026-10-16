@@ -1,13 +1,3 @@
-// Measures commits.diff on a synthetic large commit: time, response size, the
-// longest event-loop block, child process errors, and files that lost highlighting.
-//
-//   node --no-warnings bench/large-commit.ts [many|huge] [--impl <dir>] [--repo <dir>]
-//
-// many: 2,000 files of 200 lines, 100 lines changed in each.
-// huge: one added file whose diff is over git's 64 MB output buffer.
-//
-// --impl runs another checkout's server/diff.ts, for a before and after:
-//   git archive <rev> server shared | tar -x -C <dir> && ln -s "$PWD/node_modules" <dir>/node_modules
 import { ChildProcess, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
@@ -16,7 +6,6 @@ import { join, resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { parseArgs } from "node:util";
 
-// Run the sources as Node runs them in production, without a build step.
 registerHooks({
   resolve(specifier, context, next) {
     try {

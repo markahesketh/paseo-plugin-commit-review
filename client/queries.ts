@@ -10,8 +10,6 @@ import {
   type ReviewComment,
 } from "../shared/review";
 
-// One prefix for every query this plugin makes for a workspace, so a refresh
-// invalidates them together and they never collide with the host's keys.
 export function reviewQueryKey(workspaceId: string, ...parts: unknown[]) {
   return ["commit-review", workspaceId, ...parts];
 }

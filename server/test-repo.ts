@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 
-// The plugin's git calls inherit this too, so global and system config cannot change results.
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
@@ -24,7 +23,6 @@ export function useTestRepo() {
       repo.run("init", "-q", ...options);
       repo.run("config", "user.name", "Test");
       repo.run("config", "user.email", "test@example.com");
-      // User config like this must not change what the plugin parses.
       repo.run("config", "diff.noprefix", "true");
       repo.run("config", "color.ui", "always");
       repo.run("config", "color.diff", "always");
@@ -34,7 +32,6 @@ export function useTestRepo() {
       repo.run("config", "diff.submodule", "log");
       repo.run("config", "diff.ignoreSubmodules", "all");
       repo.run("config", "diff.renames", "copies");
-      // Signed commits, so log.showSignature has a signature to print.
       repo.run("config", "log.showSignature", "true");
       const key = join(repo.cwd, ".git", "signing-key");
       execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key]);

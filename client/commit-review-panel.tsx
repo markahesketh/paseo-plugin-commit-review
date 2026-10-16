@@ -27,7 +27,6 @@ export function CommitReviewPanel({ theme, layout, workspaceId }: PluginWorkspac
 
 const NO_COMMITS: CommitSummary[] = [];
 
-// Asked again whenever HEAD moves or the set of commented commits changes.
 function useReachability(workspaceId: string, headSha: string | null, comments: readonly ReviewComment[]) {
   const reachableCommits = useRpc(reachableCommitsRpc);
   const shas = useMemo(() => [...new Set(comments.map((comment) => comment.sha))].sort(), [comments]);
@@ -43,6 +42,15 @@ function useReachability(workspaceId: string, headSha: string | null, comments: 
   return query.data ?? null;
 }
 
+// Stays on its commit when new commits land, and falls back to the newest only
+// when the commit leaves the list.
+function usePinnedCommit(commits: readonly CommitSummary[]) {
+  const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const commit = commits.find((candidate) => candidate.sha === selectedSha) ?? commits[0] ?? null;
+  if (commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
+  return [commit, setSelectedSha] as const;
+}
+
 function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPalette; padding: number }) {
   const { workspaceId, palette } = props;
   const queryClient = useQueryClient();
@@ -52,12 +60,7 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
     queryFn: () => listCommits({ workspaceId }),
   });
   const commitList = commits.data?.commits ?? NO_COMMITS;
-  const [selectedSha, setSelectedSha] = useState<string | null>(null);
-  const commit = commitList.find((candidate) => candidate.sha === selectedSha) ?? commitList[0] ?? null;
-  // Pin the newest commit as soon as commits load, so a refetch after an agent
-  // commits keeps the commit under review instead of jumping to the new HEAD.
-  // Only a selected commit that leaves the list (amend, rebase) falls back.
-  if (commit && commit.sha !== selectedSha) setSelectedSha(commit.sha);
+  const [commit, selectCommit] = usePinnedCommit(commitList);
 
   const review = useReviewComments(workspaceId);
   const reachability = useReachability(workspaceId, commitList[0]?.sha ?? null, review.comments);
@@ -77,7 +80,6 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
   } else {
     body = (
       <CommitDiff
-        key={commit.sha}
         workspaceId={workspaceId}
         commit={commit}
         comments={review.comments}
@@ -95,7 +97,7 @@ function CommitReview(props: { workspaceId: string; cwd: string; palette: DiffPa
         comments={review.comments}
         palette={palette}
         padding={props.padding}
-        onSelect={setSelectedSha}
+        onSelect={selectCommit}
         onRefresh={() => void queryClient.invalidateQueries({ queryKey: reviewQueryKey(workspaceId) })}
       />
       {body}

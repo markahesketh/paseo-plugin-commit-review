@@ -9,8 +9,7 @@ export type WorkspaceAgent = Pick<Agent, "id" | "title" | "provider" | "status">
 const OPEN_STATUSES: Agent["status"][] = ["initializing", "idle", "running", "error"];
 const PAGE_LIMIT = 200;
 
-// The workspace's open agents, most recently updated first. The daemon cannot
-// filter by workspace, so every page is read until the list ends.
+// The daemon cannot filter by workspace, so every page is read until the list ends.
 export function useWorkspaceAgents(workspaceId: string) {
   const paseo = usePaseo();
   return useQuery({
