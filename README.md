@@ -18,7 +18,7 @@ Paseo's own review covers uncommitted changes or a whole branch against its base
 
 ## Requirements
 
-Paseo 0.11.x. You also need `npm` on the daemon host, because the install runs `npm ci`.
+Paseo 0.11.x or 0.12.x. You also need `npm` on the daemon host, because the install runs `npm ci`.
 
 ## Install
 
